@@ -1,0 +1,5 @@
+<!-- mic-icon.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+    d="M12 1a3 3 0 013 3v8a3 3 0 01-6 0V4a3 3 0 013-3zm0 14c3.31 0 6-2.69 6-6m-6 6c-3.31 0-6-2.69-6-6m6 6v4m0 0h3m-3 0H9" />
+</svg>
