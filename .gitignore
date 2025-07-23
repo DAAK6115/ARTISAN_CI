@@ -1,0 +1,60 @@
+# === PYTHON / DJANGO ===
+*.pyc
+*.pyo
+__pycache__/
+db.sqlite3
+*.log
+*.pot
+*.py[cod]
+*.sqlite3
+*.env
+.env.*
+local_settings.py
+instance/
+.env
+*.pem
+
+# Django Migrations
+*/migrations/
+!*/migrations/__init__.py
+
+# Django static/media
+staticfiles/
+media/
+static/
+*.sqlite3
+
+# PyCharm / VSCode / IDE
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Virtual env
+env/
+venv/
+ENV/
+.env/
+.venv/
+
+# === NODE / REACT ===
+node_modules/
+build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Cache / Temp
+.cache/
+coverage/
+*.tgz
+
+# Logs
+logs/
+*.log
+
+# === SYSTEM FILES ===
+.DS_Store
+Thumbs.db

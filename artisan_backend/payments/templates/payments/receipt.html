@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Reçu de Paiement - ARTISAN_CI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 30px;
+      font-size: 14px;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #007BFF;
+      font-size: 20px;
+      margin-bottom: 5px;
+    }
+    h2 {
+      text-align: center;
+      color: #007BFF;
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .section {
+      margin-top: 20px;
+      padding: 10px 0;
+      border-bottom: 1px solid #ddd;
+    }
+    .section:last-child {
+      border-bottom: none;
+    }
+    .label {
+      font-weight: bold;
+      color: #555;
+    }
+    .value {
+      margin-left: 10px;
+      color: #000;
+    }
+    .highlight {
+      color: #d9534f;
+      font-weight: bold;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- En-tête -->
+    <h1>ARTISAN_CI</h1>
+    <h2>Reçu de Paiement</h2>
+
+    <!-- Détails de la transaction -->
+    <div class="section">
+      <p><span class="label">Date :</span> <span class="value">{{ payment.date_paiement }}</span></p>
+      <p><span class="label">Transaction :</span> <span class="value">{{ payment.transaction_id }}</span></p>
+    </div>
+
+    <!-- Détails client et service -->
+    <div class="section">
+      <p><span class="label">Client :</span> <span class="value">{{ payment.client.username }}</span></p>
+      <p><span class="label">Service :</span> <span class="value">{{ payment.service.titre }}</span></p>
+      <p><span class="label">Artisan :</span> <span class="value">{{ payment.service.artisan.username }}</span></p>
+    </div>
+
+    <!-- Montant et statut -->
+    <div class="section">
+      {% if payment.reduction %}
+  <p><span class="label">Montant initial :</span> <span class="value">{{ payment.montant_initial|floatformat:2 }} FCFA</span></p>
+  <p><span class="label">Réduction :</span> <span class="value highlight">-{{ payment.reduction|floatformat:2 }} FCFA</span></p>
+  <p><span class="label">Montant final :</span> <span class="value">{{ montant_final|default:payment.montant|floatformat:2 }} FCFA</span></p>
+{% else %}
+  <p><span class="label">Montant :</span> <span class="value">{{ payment.montant|floatformat:2 }} FCFA</span></p>
+{% endif %}
+
+
+      <p><span class="label">Méthode de paiement :</span>
+        <span class="value">{{ payment.get_methode_paiement_display|default:"Espèce" }}</span>
+      </p>
+
+      <p><span class="label">Statut :</span> <span class="value">{{ payment.statut|upper }}</span></p>
+    </div>
+
+    <!-- Pied de page -->
+    <div class="footer">
+      Merci pour votre confiance.<br />
+      Reçu généré automatiquement par <strong>ARTISAN_CI</strong>.
+    </div>
+  </div>
+</body>
+</html>
