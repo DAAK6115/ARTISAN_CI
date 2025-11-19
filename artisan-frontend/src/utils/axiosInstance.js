@@ -1,20 +1,33 @@
 // src/utils/axiosInstance.js
-import axios from 'axios';
+import axios from "axios";
+
+// On choisit l'URL de base en fonction de l'environnement
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost"
+    ? "http://localhost:8000/api"                  // dev
+    : "https://artisan-ci-backend.onrender.com/api"); // prod Render
 
 const axiosInstance = axios.create({
-  baseURL: 'https://artisan-ci-backend.onrender.com',
+  baseURL: API_BASE_URL,
 });
 
-// Interception des requêtes
+// --- Interception des requêtes ---
 axiosInstance.interceptors.request.use(
-  (config) => {
-    // Liste des routes publiques qui ne nécessitent pas de token
-    const publicPaths = ['/accounts/register/', '/accounts/login/', '/accounts/refresh/'];
-    const isPublicPath = publicPaths.some(path => config.url?.includes(path));
+  config => {
+    // routes publiques
+    const publicPaths = [
+      "/accounts/register/",
+      "/accounts/login/",
+      "/accounts/refresh/",
+    ];
+    const isPublicPath = publicPaths.some(path =>
+      config.url?.includes(path)
+    );
 
     if (!isPublicPath) {
-      const token = localStorage.getItem('access') || localStorage.getItem('token');
-      console.log("🔐 TOKEN ENVOYÉ :", token);
+      const token =
+        localStorage.getItem("access") || localStorage.getItem("token");
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -22,39 +35,39 @@ axiosInstance.interceptors.request.use(
 
     return config;
   },
-  (error) => Promise.reject(error)
+  error => Promise.reject(error)
 );
 
-// Interception des réponses : gestion automatique du refresh
+// --- Interception des réponses : refresh automatique ---
 axiosInstance.interceptors.response.use(
   response => response,
-  async (error) => {
+  async error => {
     const originalRequest = error.config;
 
-    // Si erreur 401 (non autorisé) et qu'on n'a pas déjà essayé de refresh
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      const refresh = localStorage.getItem('refresh');
+      const refresh = localStorage.getItem("refresh");
       if (refresh) {
         try {
-          const res = await axios.post('http://localhost:8000/api/accounts/refresh/', {
-            refresh: refresh,
+          // ⚠️ ICI on utilise axiosInstance + même baseURL, plus de localhost
+          const res = await axiosInstance.post("/accounts/refresh/", {
+            refresh,
           });
 
           const newAccess = res.data.access;
-          localStorage.setItem('access', newAccess);
+          localStorage.setItem("access", newAccess);
 
-          // Mise à jour des headers
-          axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`;
-          originalRequest.headers['Authorization'] = `Bearer ${newAccess}`;
+          axiosInstance.defaults.headers.common[
+            "Authorization"
+          ] = `Bearer ${newAccess}`;
+          originalRequest.headers["Authorization"] = `Bearer ${newAccess}`;
 
-          return axiosInstance(originalRequest); // Relance la requête initiale
+          return axiosInstance(originalRequest);
         } catch (refreshError) {
-          // En cas d'échec, suppression des tokens et redirection vers la page d'accueil
-          localStorage.removeItem('access');
-          localStorage.removeItem('refresh');
-          window.location.href = '/'; // Redirige vers login
+          localStorage.removeItem("access");
+          localStorage.removeItem("refresh");
+          window.location.href = "/"; // ou /login selon ton routing
         }
       }
     }
