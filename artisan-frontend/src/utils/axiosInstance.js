@@ -1,16 +1,16 @@
 // src/utils/axiosInstance.js
 import axios from "axios";
 
-// On choisit l'URL de base en fonction de l'environnement
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (window.location.hostname === "localhost"
-    ? "http://localhost:8000/api"                  // dev
-    : "https://artisan-ci-backend.onrender.com/api"); // prod Render
+const isLocalhost = window.location.hostname === "localhost";
+
+const API_BASE_URL = isLocalhost
+  ? "http://localhost:8000/api"                     // dev
+  : "https://artisan-ci-backend.onrender.com/api";  // prod
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
 });
+
 
 // --- Interception des requêtes ---
 axiosInstance.interceptors.request.use(
@@ -51,9 +51,11 @@ axiosInstance.interceptors.response.use(
       if (refresh) {
         try {
           // ⚠️ ICI on utilise axiosInstance + même baseURL, plus de localhost
-          const res = await axiosInstance.post("/accounts/refresh/", {
-            refresh,
-          });
+          // au lieu de axios.post('http://localhost:8000/api/accounts/refresh/', ...)
+const res = await axiosInstance.post("/accounts/refresh/", {
+  refresh,
+});
+
 
           const newAccess = res.data.access;
           localStorage.setItem("access", newAccess);

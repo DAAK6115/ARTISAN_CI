@@ -1,12 +1,9 @@
-// src/utils/websocket.js (par ex.)
-
 export function createWebSocket(username, onMessageReceived) {
-  // Choix de la base en fonction de l'environnement
-  const WS_BASE_URL =
-    import.meta.env.VITE_WS_URL ||
-    (window.location.hostname === "localhost"
-      ? "ws://localhost:8000"                             // dev
-      : "wss://artisan-ci-backend.onrender.com");         // prod (Render)
+  const isLocalhost = window.location.hostname === "localhost";
+
+  const WS_BASE_URL = isLocalhost
+    ? "ws://localhost:8000"
+    : "wss://artisan-ci-backend.onrender.com";
 
   const ws = new WebSocket(
     `${WS_BASE_URL}/ws/chat/${encodeURIComponent(username)}/`
