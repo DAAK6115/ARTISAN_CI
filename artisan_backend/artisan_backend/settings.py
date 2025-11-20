@@ -191,10 +191,15 @@ CHANNEL_LAYERS = {
     },
 }
 
+CORS_ALLOWED_ORIGINS = [
+    "https://artisan-ci-mauve.vercel.app",  # ton front
+    "https://daak6115.github.io",           # si tu appelles depuis ton portfolio
+]
+
+
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http:\/\/localhost:\d+$",
 ]
-
 
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
