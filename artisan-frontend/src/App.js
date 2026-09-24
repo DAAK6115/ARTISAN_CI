@@ -1,16 +1,14 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-// Components
-import PrivateRoute from './components/PrivateRoute';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 
-// Auth
+import PrivateRoute from './components/PrivateRoute';
+import PublicOnlyRoute from './components/PublicOnlyRoute';
+import ClientNavbar from './components/ClientNavbar';
+import ArtisanNavbar from './components/ArtisanNavbar';
+
 import Login from './features/auth/Login';
 import Register from './features/auth/Register';
 import ForgotPassword from './features/auth/ForgotPassword';
-import Dashboard from './features/auth/Dashboard';
-import PublicProfile from './pages/ArtisanPublicProfilePage';
 
-// Artisan
-import ArtisanNavbar from './components/ArtisanNavbar';
 import ArtisanDashboard from './pages/artisan/ArtisanDashboard';
 import ArtisanServices from './pages/artisan/ArtisanServices';
 import ArtisanAppointments from './pages/artisan/ArtisanAppointments';
@@ -20,10 +18,7 @@ import ArtisanPaiements from './pages/artisan/ArtisanPaiements';
 import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage';
 import ArtisanProfileEditPage from './pages/artisan/ArtisanProfileEditPage';
 import ListeConversationsArtisanPage from './pages/artisan/ListeConversationsArtisanPage';
-import ArtisanChatPage from './pages/artisan/ArtisanChatPage';
 
-// Client
-import ClientNavbar from './components/ClientNavbar';
 import ClientDashboard from './pages/client/ClientDashboard';
 import ArtisansList from './pages/client/ArtisansList';
 import ServicesList from './pages/client/ServicesList';
@@ -36,29 +31,51 @@ import DonnerAvisPage from './pages/client/DonnerAvisPage';
 import ClientProfilePage from './pages/client/ClientProfilePage';
 import ClientProfileEditPage from './pages/client/ClientProfileEditPage';
 import NoterArtisanPage from './pages/client/NoterArtisanPage';
-// Profil public
+
 import ArtisanPublicProfilePage from './pages/ArtisanPublicProfilePage';
-//Chat
 import ChatPage from './pages/chat/ChatPage';
 import ListeConversationsPage from './pages/chat/ListeConversationsPage';
 
-// Layout Artisan
-function ArtisanLayout({ children }) {
+import ForbiddenPage from './pages/system/ForbiddenPage';
+import NotFoundPage from './pages/system/NotFoundPage';
+import RoleHomeRedirect from './pages/system/RoleHomeRedirect';
+
+function ClientLayout({ children }) {
+  return (
+    <div className="min-h-screen md:flex bg-gray-50">
+      <ClientNavbar />
+      <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
+    </div>
+  );
+}
+
+// Certaines pages artisan historiques affichent déjà ArtisanNavbar elles-mêmes.
+// Ce shell est réservé aux pages qui n'ont pas encore leur propre navigation,
+// afin d'éviter un double menu pendant cette phase de nettoyage.
+function ArtisanNavigationShell({ children }) {
   return (
     <>
       <ArtisanNavbar />
-      <div className="pt-20 px-6">{children}</div>
+      <main className="pt-20 px-4 md:px-6">{children}</main>
     </>
   );
 }
 
-// Layout Client
-function ClientLayout({ children }) {
+function ClientRoute({ children }) {
   return (
-    <div className="flex">
-      <ClientNavbar />
-      <div className="flex-1 bg-gray-50 p-6">{children}</div>
-    </div>
+    <PrivateRoute allowedRoles={['client']}>
+      <ClientLayout>{children}</ClientLayout>
+    </PrivateRoute>
+  );
+}
+
+function ArtisanRoute({ children, withNavigation = false }) {
+  return (
+    <PrivateRoute allowedRoles={['artisan']}>
+      {withNavigation ? (
+        <ArtisanNavigationShell>{children}</ArtisanNavigationShell>
+      ) : children}
+    </PrivateRoute>
   );
 }
 
@@ -66,53 +83,56 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        {/* Components */}
-        <Route path="/client/dashboard" element={<PrivateRoute><ClientLayout><ClientDashboard /></ClientLayout></PrivateRoute>} />
-        <Route path="/artisan/dashboard" element={<PrivateRoute><ArtisanLayout><ArtisanDashboard /></ArtisanLayout></PrivateRoute>} />
+        {/* Authentification publique */}
+        <Route path="/" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
+        <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
+        <Route path="/forgotpassword" element={<Navigate to="/forgot-password" replace />} />
 
-        {/* Auth */}
-        <Route path="/" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgotpassword" element={<ForgotPassword />} />
+        {/* Redirection vers l'espace correspondant au rôle connecté */}
+        <Route path="/dashboard" element={<PrivateRoute><RoleHomeRedirect /></PrivateRoute>} />
+        <Route path="/dashboard/:username" element={<PrivateRoute><RoleHomeRedirect /></PrivateRoute>} />
 
-        {/* Dashboards généraux */}
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/dashboard/:username" element={<Dashboard />} />
+        {/* Profil artisan public : accessible sans compte */}
+        <Route path="/artisans/:username" element={<ArtisanPublicProfilePage />} />
 
-        {/* Profil public */}
-        <Route path="/artisans/:username" element={<ClientLayout><ArtisanPublicProfilePage /></ClientLayout>} />
+        {/* Espace client */}
+        <Route path="/client/dashboard" element={<ClientRoute><ClientDashboard /></ClientRoute>} />
+        <Route path="/client/artisans" element={<ClientRoute><ArtisansList /></ClientRoute>} />
+        <Route path="/client/services" element={<ClientRoute><ServicesList /></ClientRoute>} />
+        <Route path="/client/services/:id" element={<ClientRoute><ServiceDetail /></ClientRoute>} />
+        <Route path="/client/favoris" element={<ClientRoute><FavorisPage /></ClientRoute>} />
+        <Route path="/client/rdvs" element={<ClientRoute><MesRendezVous /></ClientRoute>} />
+        <Route path="/client/paiements" element={<ClientRoute><PaiementsPage /></ClientRoute>} />
+        <Route path="/client/notifications" element={<ClientRoute><ClientNotificationsPage /></ClientRoute>} />
+        <Route path="/client/avis" element={<ClientRoute><DonnerAvisPage /></ClientRoute>} />
+        <Route path="/client/noter-artisan/:rdv_id" element={<ClientRoute><NoterArtisanPage /></ClientRoute>} />
+        <Route path="/client/avis/ajouter/:rdv_id" element={<ClientRoute><NoterArtisanPage /></ClientRoute>} />
+        <Route path="/client/profil" element={<ClientRoute><ClientProfilePage /></ClientRoute>} />
+        <Route path="/client/profil/edit" element={<ClientRoute><ClientProfileEditPage /></ClientRoute>} />
+        <Route path="/client/mes-conversations" element={<ClientRoute><ListeConversationsPage /></ClientRoute>} />
+        <Route path="/client/messagerie/:username" element={<ClientRoute><ChatPage /></ClientRoute>} />
 
-        {/* Artisan Pages */}
-        <Route path="/artisan/dashboard" element={<ArtisanLayout><ArtisanDashboard /></ArtisanLayout>} />
-        <Route path="/artisan/services" element={<ArtisanLayout><ArtisanServices /></ArtisanLayout>} />
-        <Route path="/artisan/rdv" element={<ArtisanLayout><ArtisanAppointments /></ArtisanLayout>} />
-        <Route path="/artisan/portfolio" element={<ArtisanLayout><ArtisanPortfolio /></ArtisanLayout>} />
-        <Route path="/artisan/certifications" element={<ArtisanLayout><ArtisanCertifications /></ArtisanLayout>} />
-        <Route path="/artisan/paiements" element={<ArtisanLayout><ArtisanPaiements /></ArtisanLayout>} />
-        <Route path="/artisan/profil" element={<ArtisanLayout><ArtisanProfilePage /></ArtisanLayout>} />
-        <Route path="/artisan/profil/edit" element={<ArtisanLayout><ArtisanProfileEditPage /></ArtisanLayout>} />
-        <Route path="/artisan/messagerie/:username" element={<ArtisanLayout><ChatPage /></ArtisanLayout>} />
-        <Route path="/artisan/mes-conversations" element={<ArtisanLayout><ListeConversationsArtisanPage /></ArtisanLayout>} />
-        <Route path="/artisan/messagerie/:username" element={<ArtisanLayout><ArtisanChatPage /></ArtisanLayout>} />
+        {/* Compatibilité avec les anciens liens déjà présents dans le projet */}
+        <Route path="/mes-conversations" element={<ClientRoute><ListeConversationsPage /></ClientRoute>} />
+        <Route path="/messagerie/:username" element={<ClientRoute><ChatPage /></ClientRoute>} />
 
-        {/* Client Pages */}
-        <Route path="/client/dashboard" element={<ClientLayout><ClientDashboard /></ClientLayout>} />
-        <Route path="/client/artisans" element={<ClientLayout><ArtisansList /></ClientLayout>} />
-        <Route path="/client/services" element={<ClientLayout><ServicesList /></ClientLayout>} />
-        <Route path="/client/services/:id" element={<ClientLayout><ServiceDetail /></ClientLayout>} />
-        <Route path="/client/favoris" element={<ClientLayout><FavorisPage /></ClientLayout>} />
-        <Route path="/client/rdvs" element={<ClientLayout><MesRendezVous /></ClientLayout>} />
-        <Route path="/client/paiements" element={<ClientLayout><PaiementsPage /></ClientLayout>} />
-        <Route path="/client/notifications" element={<ClientLayout><ClientNotificationsPage /></ClientLayout>} />
-        <Route path="/client/noter-artisan/:rdv_id" element={<ClientLayout><NoterArtisanPage /></ClientLayout>} />
-        <Route path="/client/avis" element={<ClientLayout><DonnerAvisPage /></ClientLayout>} />
-        <Route path="/client/profil" element={<ClientLayout><ClientProfilePage /></ClientLayout>} />
-        <Route path="/client/profil/edit" element=
-        {<ClientProfileEditPage />} />
-        
-        // Chat
-        <Route path="/messagerie/:username" element={<ClientLayout><ChatPage /></ClientLayout>} />
-        <Route path="/mes-conversations" element={<ClientLayout><ListeConversationsPage /></ClientLayout>} />
+        {/* Espace artisan */}
+        <Route path="/artisan/dashboard" element={<ArtisanRoute><ArtisanDashboard /></ArtisanRoute>} />
+        <Route path="/artisan/services" element={<ArtisanRoute><ArtisanServices /></ArtisanRoute>} />
+        <Route path="/artisan/rdv" element={<ArtisanRoute><ArtisanAppointments /></ArtisanRoute>} />
+        <Route path="/artisan/portfolio" element={<ArtisanRoute><ArtisanPortfolio /></ArtisanRoute>} />
+        <Route path="/artisan/certifications" element={<ArtisanRoute><ArtisanCertifications /></ArtisanRoute>} />
+        <Route path="/artisan/paiements" element={<ArtisanRoute><ArtisanPaiements /></ArtisanRoute>} />
+        <Route path="/artisan/profil" element={<ArtisanRoute><ArtisanProfilePage /></ArtisanRoute>} />
+        <Route path="/artisan/profil/edit" element={<ArtisanRoute><ArtisanProfileEditPage /></ArtisanRoute>} />
+        <Route path="/artisan/mes-conversations" element={<ArtisanRoute withNavigation><ListeConversationsArtisanPage /></ArtisanRoute>} />
+        <Route path="/artisan/messagerie/:username" element={<ArtisanRoute withNavigation><ChatPage /></ArtisanRoute>} />
+
+        {/* Erreurs contrôlées */}
+        <Route path="/forbidden" element={<ForbiddenPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );

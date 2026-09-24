@@ -1,80 +1,98 @@
-// src/utils/axiosInstance.js
-import axios from "axios";
+import axios from 'axios';
+import {
+  clearSession,
+  getAccessToken,
+  getRefreshToken,
+  updateTokens,
+} from './auth';
 
-const isLocalhost = window.location.hostname === "localhost";
+const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-const API_BASE_URL = isLocalhost
-  ? "http://localhost:8000/api"                     // dev
-  : "https://artisan-ci-backend.onrender.com/api";  // prod
+export const API_BASE_URL = isLocalhost
+  ? 'http://localhost:8000/api'
+  : 'https://artisan-ci-backend.onrender.com/api';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 20000,
 });
 
+const publicPaths = [
+  '/accounts/register/',
+  '/accounts/login/',
+  '/accounts/logout/',
+  '/accounts/refresh/',
+  '/accounts/password-reset/request/',
+  '/accounts/password-reset/confirm/',
+];
 
-// --- Interception des requêtes ---
+const isPublicPath = (url = '') => publicPaths.some((path) => url.includes(path));
+
+let refreshPromise = null;
+
+async function refreshSession() {
+  if (refreshPromise) return refreshPromise;
+
+  const refresh = getRefreshToken();
+  if (!refresh) throw new Error('Aucun jeton de rafraîchissement.');
+
+  refreshPromise = axios
+    .post(`${API_BASE_URL}/accounts/refresh/`, { refresh }, { timeout: 20000 })
+    .then((response) => {
+      const { access, refresh: rotatedRefresh } = response.data;
+      if (!access) throw new Error('Réponse de rafraîchissement invalide.');
+      updateTokens({ access, refresh: rotatedRefresh });
+      return access;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+}
+
 axiosInstance.interceptors.request.use(
-  config => {
-    // routes publiques
-    const publicPaths = [
-      "/accounts/register/",
-      "/accounts/login/",
-      "/accounts/refresh/",
-    ];
-    const isPublicPath = publicPaths.some(path =>
-      config.url?.includes(path)
-    );
-
-    if (!isPublicPath) {
-      const token =
-        localStorage.getItem("access") || localStorage.getItem("token");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+  (config) => {
+    if (!isPublicPath(config.url)) {
+      const access = getAccessToken();
+      if (access) {
+        config.headers.Authorization = `Bearer ${access}`;
       }
     }
-
     return config;
   },
-  error => Promise.reject(error)
+  (error) => Promise.reject(error)
 );
 
-// --- Interception des réponses : refresh automatique ---
 axiosInstance.interceptors.response.use(
-  response => response,
-  async error => {
+  (response) => response,
+  async (error) => {
     const originalRequest = error.config;
+    const status = error.response?.status;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      const refresh = localStorage.getItem("refresh");
-      if (refresh) {
-        try {
-          // ⚠️ ICI on utilise axiosInstance + même baseURL, plus de localhost
-          // au lieu de axios.post('http://localhost:8000/api/accounts/refresh/', ...)
-const res = await axiosInstance.post("/accounts/refresh/", {
-  refresh,
-});
-
-
-          const newAccess = res.data.access;
-          localStorage.setItem("access", newAccess);
-
-          axiosInstance.defaults.headers.common[
-            "Authorization"
-          ] = `Bearer ${newAccess}`;
-          originalRequest.headers["Authorization"] = `Bearer ${newAccess}`;
-
-          return axiosInstance(originalRequest);
-        } catch (refreshError) {
-          localStorage.removeItem("access");
-          localStorage.removeItem("refresh");
-          window.location.href = "/"; // ou /login selon ton routing
-        }
-      }
+    if (
+      status !== 401 ||
+      !originalRequest ||
+      originalRequest._retry ||
+      isPublicPath(originalRequest.url)
+    ) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    originalRequest._retry = true;
+
+    try {
+      const newAccess = await refreshSession();
+      originalRequest.headers = originalRequest.headers || {};
+      originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+      return axiosInstance(originalRequest);
+    } catch (refreshError) {
+      clearSession();
+      if (window.location.pathname !== '/') {
+        window.location.replace('/');
+      }
+      return Promise.reject(refreshError);
+    }
   }
 );
 

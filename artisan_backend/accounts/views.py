@@ -11,6 +11,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -72,6 +73,22 @@ class LoginView(APIView):
                 "role": user.role,
             }
         )
+
+
+class LogoutView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = str(request.data.get("refresh", "")).strip()
+        if refresh_token:
+            try:
+                RefreshToken(refresh_token).blacklist()
+            except TokenError:
+                # Déconnexion idempotente : un jeton déjà invalide/révoqué
+                # ne doit pas révéler d'information supplémentaire.
+                pass
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RegisterView(APIView):

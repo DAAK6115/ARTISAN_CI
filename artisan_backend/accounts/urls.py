@@ -7,6 +7,7 @@ from .views import (
     ListArtisansView,
     ListClientsView,
     LoginView,
+    LogoutView,
     MeView,
     RegisterView,
     RequestPasswordResetView,
@@ -18,6 +19,7 @@ from .views import (
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", LoginView.as_view(), name="login"),
+    path("logout/", LogoutView.as_view(), name="logout"),
     path("refresh/", SecureTokenRefreshView.as_view(), name="token_refresh"),
 
     path("me/", MeView.as_view(), name="me"),
