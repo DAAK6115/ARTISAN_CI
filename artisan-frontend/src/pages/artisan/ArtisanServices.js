@@ -154,10 +154,10 @@ export default function ArtisanServices() {
   };
 
   return (
-    <div className="p-6">
-      <h2 className="text-xl font-bold mb-4">🛠 Mes prestations</h2>
+    <div className="mx-auto max-w-[1350px] p-4 pb-28 sm:p-6 lg:pb-8">
+      <div className="mb-6"><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Catalogue professionnel</p><h2 className="mt-2 text-3xl font-black tracking-tight">Mes prestations</h2><p className="mt-2 text-sm text-[#718078]">Définissez clairement vos services, tarifs, durée et zone d’intervention.</p></div>
 
-      <form onSubmit={handleCreateOrUpdate} className="mb-8 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white border rounded-lg p-4">
+      <form onSubmit={handleCreateOrUpdate} className="mb-8 grid grid-cols-1 gap-4 rounded-[28px] border border-black/5 bg-white p-5 shadow-[0_8px_28px_rgba(30,45,37,0.05)] sm:grid-cols-2 sm:p-6">
         <div>
           <label className="block text-sm font-medium mb-1">Titre</label>
           <input
@@ -293,7 +293,7 @@ export default function ArtisanServices() {
         </div>
 
         <div className="sm:col-span-2 flex gap-2">
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          <button className="rounded-2xl bg-[#0B6B50] px-5 py-3 text-sm font-black text-white hover:bg-[#095C45]">
             {editingService ? 'Mettre à jour' : 'Ajouter la prestation'}
           </button>
           {editingService && (
@@ -318,7 +318,7 @@ export default function ArtisanServices() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {services.map((service) => (
-            <div key={service.id} className="border rounded p-4 shadow bg-white">
+            <div key={service.id} className="rounded-[26px] border border-black/5 bg-white p-5 shadow-[0_8px_26px_rgba(30,45,37,0.05)]">
               <h3 className="font-bold text-lg">{service.titre}</h3>
               <p className="text-sm text-gray-600 mt-1">{service.description}</p>
               <p className="text-green-700 font-semibold mt-2">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'À partir de ' : ''}${service.prix} FCFA`}</p>

@@ -90,8 +90,9 @@ export default function ArtisanPaiements() {
   };
 
   return (
-    <div className="p-2 md:p-6">
-      <h1 className="text-2xl font-bold mb-2">💳 Règlements des prestations</h1>
+    <div className="mx-auto max-w-[1250px] p-4 pb-28 sm:p-6 lg:pb-8">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Suivi financier</p>
+      <h1 className="mt-2 text-3xl font-black tracking-tight">Règlements des prestations</h1>
       <p className="text-sm text-gray-500 mb-6">
         Aucun règlement n’est demandé avant la prestation. Une fois le service marqué comme terminé, vous seul pouvez indiquer si vous avez été payé ou non.
       </p>
@@ -106,7 +107,7 @@ export default function ArtisanPaiements() {
             const paid = payment?.statut === 'paid';
             const unpaid = payment?.statut === 'unpaid';
             return (
-              <article key={row.appointment_id} className="bg-white border rounded-xl p-4">
+              <article key={row.appointment_id} className="rounded-[26px] border border-black/5 bg-white p-5 shadow-[0_8px_26px_rgba(30,45,37,0.05)]">
                 <div className="flex flex-wrap justify-between gap-3">
                   <div>
                     <p className="font-semibold">{row.client_username} · {row.service_titre}</p>
@@ -157,7 +158,7 @@ export default function ArtisanPaiements() {
                       <button
                         disabled={submittingId === row.appointment_id}
                         onClick={() => declare(row, 'paid')}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded disabled:opacity-50"
+                        className="rounded-2xl bg-[#0B6B50] px-4 py-2 text-sm font-black text-white hover:bg-[#095C45] disabled:opacity-50"
                       >
                         Marquer comme payé
                       </button>

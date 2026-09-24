@@ -243,9 +243,9 @@ export default function ArtisanAppointments() {
   };
 
   return (
-    <div className="p-6">
+    <div className="mx-auto max-w-[1400px] p-4 pb-28 sm:p-6 lg:pb-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        <h2 className="text-xl font-bold">📋 Rendez-vous & disponibilités</h2>
+        <div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Organisation</p><h2 className="mt-2 text-3xl font-black tracking-tight">Agenda & disponibilités</h2></div>
         <div className="flex gap-2">
           <button
             onClick={() => setActiveTab('appointments')}
@@ -272,7 +272,7 @@ export default function ArtisanAppointments() {
             <p className="text-gray-500">Aucun rendez-vous pour l’instant.</p>
           ) : (
             appointments.map((appointment) => (
-              <div key={appointment.id} className="p-4 border rounded bg-white shadow-sm">
+              <div key={appointment.id} className="rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_8px_24px_rgba(30,45,37,0.05)]">
                 <div className="flex flex-col md:flex-row md:justify-between gap-3">
                   <div>
                     <p><strong>👤 Client :</strong> {appointment.client_nom}</p>

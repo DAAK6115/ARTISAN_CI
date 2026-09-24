@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import axios from '../utils/axiosInstance';
 import ArtisanMap from '../components/ArtisanMap';
+import LocationActions from '../components/LocationActions';
 import AppIcon from '../components/AppIcon';
 import PublicHeader from '../components/PublicHeader';
 import { getUserRole, isAuthenticated } from '../utils/auth';
@@ -105,7 +106,7 @@ export default function ArtisanPublicProfilePage() {
           </div>
 
           <aside className="space-y-6">
-            {(portfolio.latitude && portfolio.longitude) && <section className="overflow-hidden rounded-[30px] border border-black/5 bg-white p-3 shadow-[0_12px_35px_rgba(20,38,30,0.05)]"><div className="px-2 pb-3"><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B6B50]">Zone</p><h2 className="mt-1 font-black">Localisation de l’artisan</h2></div><div className="overflow-hidden rounded-[22px]"><ArtisanMap latitude={portfolio.latitude} longitude={portfolio.longitude} /></div></section>}
+            {(portfolio.latitude && portfolio.longitude) && <section className="overflow-hidden rounded-[30px] border border-black/5 bg-white p-3 shadow-[0_12px_35px_rgba(20,38,30,0.05)]"><div className="px-2 pb-3"><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B6B50]">Zone</p><h2 className="mt-1 font-black">Localisation de l’artisan</h2>{portfolio.localisation && <p className="mt-1 text-xs font-semibold text-[#718078]">{portfolio.localisation}</p>}</div><div className="overflow-hidden rounded-[22px]"><ArtisanMap latitude={portfolio.latitude} longitude={portfolio.longitude} height={320} popupText={portfolio.localisation || portfolio.artisan_nom} /></div><div className="px-2 pb-2 pt-3"><LocationActions latitude={portfolio.latitude} longitude={portfolio.longitude} label={portfolio.localisation || portfolio.artisan_nom} compact /></div></section>}
 
             <section className="rounded-[30px] border border-black/5 bg-white p-5 shadow-[0_12px_35px_rgba(20,38,30,0.05)]">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#66736D]">Documents déclarés</p>

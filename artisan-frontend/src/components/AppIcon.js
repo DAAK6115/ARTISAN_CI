@@ -16,6 +16,11 @@ const paths = {
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Zm-3-10 2 2 4-4',
   wallet: 'M4 6h15a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V6Zm0 0 12-3v3m2 6h3',
   tools: 'm14.7 6.3 3-3a5 5 0 0 1-6.6 6.6L4 17l3 3 7.1-7.1a5 5 0 0 1 6.6-6.6l-3 3-3-3Z',
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-1-11.26a4 4 0 0 1 0 7.75',
+  chart: 'M4 20V10m6 10V4m6 16v-7m4 7H2',
+  image: 'M4 4h16v16H4V4Zm0 12 5-5 4 4 2-2 5 5M9 8h.01',
+  award: 'M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm-3 0-1 7 4-2 4 2-1-7',
+  clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-15v5l3 2',
 };
 
 export default function AppIcon({ name, className = 'w-5 h-5', strokeWidth = 1.8 }) {

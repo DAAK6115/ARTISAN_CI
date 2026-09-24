@@ -79,14 +79,15 @@ export default function ArtisanQuotesPage() {
   const estimatedTotal = Math.max(0, estimatedSubtotal - Number(form.discount_amount || 0));
 
   return (
-    <div className="p-2 md:p-4">
-      <h1 className="text-2xl font-bold mb-2">📄 Devis clients</h1>
+    <div className="mx-auto max-w-[1250px] p-4 pb-28 sm:p-6 lg:pb-8">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Propositions commerciales</p>
+      <h1 className="mt-2 text-3xl font-black tracking-tight">Devis clients</h1>
       <p className="text-sm text-gray-500 mb-6">
         Le devis fixe le montant convenu. Le règlement est déclaré uniquement après la réalisation de la prestation.
       </p>
       {message && <p className="mb-4 text-blue-700">{message}</p>}
 
-      <form onSubmit={createAndSend} className="bg-white border rounded-xl p-4 mb-8 space-y-4">
+      <form onSubmit={createAndSend} className="mb-8 space-y-4 rounded-[28px] border border-black/5 bg-white p-5 shadow-[0_8px_28px_rgba(30,45,37,0.05)] sm:p-6">
         <select value={form.appointment} onChange={(e) => setForm({ ...form, appointment: e.target.value })} className="border rounded p-2 w-full" required>
           <option value="">-- Choisir une demande --</option>
           {appointments.map((a) => <option key={a.id} value={a.id}>{a.client_nom} · {a.service_titre} · {new Date(a.date_rdv).toLocaleString('fr-FR')}</option>)}
@@ -110,14 +111,14 @@ export default function ArtisanQuotesPage() {
         </div>
         <textarea className="border rounded p-2 w-full" rows={3} maxLength={2000} placeholder="Notes et conditions (facultatif)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         <div className="text-right font-bold">Total estimé : {money(estimatedTotal)}</div>
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded w-full">Créer et envoyer le devis</button>
+        <button className="w-full rounded-2xl bg-[#0B6B50] px-4 py-3 text-sm font-black text-white hover:bg-[#095C45]">Créer et envoyer le devis</button>
       </form>
 
       <h2 className="text-lg font-semibold mb-3">Historique des devis</h2>
       {loading ? <p>Chargement...</p> : (
         <div className="space-y-3">
           {quotes.map((quote) => (
-            <div key={quote.id} className="bg-white border rounded p-4 flex flex-wrap justify-between gap-3">
+            <div key={quote.id} className="flex flex-wrap justify-between gap-3 rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_8px_24px_rgba(30,45,37,0.04)]">
               <div>
                 <p className="font-semibold">{quote.reference} · {quote.client_username}</p>
                 <p className="text-sm text-gray-500">{quote.service_titre} · {quote.status}</p>

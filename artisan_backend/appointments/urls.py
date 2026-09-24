@@ -3,6 +3,8 @@ from django.urls import path
 from .views import (
     AppointmentDetailView,
     ArtisanAppointmentsView,
+    ArtisanClientsView,
+    ArtisanDashboardSummaryView,
     ArtisanAvailabilityDetailView,
     ArtisanAvailabilityListCreateView,
     ArtisanTimeOffDetailView,
@@ -22,6 +24,8 @@ urlpatterns = [
         ArtisanAppointmentsView.as_view(),
         name='artisan-appointments',
     ),
+    path('artisan-dashboard/', ArtisanDashboardSummaryView.as_view(), name='artisan-dashboard-summary'),
+    path('artisan-clients/', ArtisanClientsView.as_view(), name='artisan-clients'),
     path(
         'creneaux/<int:service_id>/',
         AvailableSlotsView.as_view(),

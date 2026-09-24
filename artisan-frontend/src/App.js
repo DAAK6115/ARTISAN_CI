@@ -17,6 +17,7 @@ import ArtisanPortfolio from './pages/artisan/ArtisanPortfolio';
 import ArtisanCertifications from './pages/artisan/ArtisanCertifications';
 import ArtisanPaiements from './pages/artisan/ArtisanPaiements';
 import ArtisanQuotesPage from './pages/artisan/ArtisanQuotesPage';
+import ArtisanClientsPage from './pages/artisan/ArtisanClientsPage';
 import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage';
 import ArtisanProfileEditPage from './pages/artisan/ArtisanProfileEditPage';
 import ListeConversationsArtisanPage from './pages/artisan/ListeConversationsArtisanPage';
@@ -56,10 +57,10 @@ function ClientLayout({ children }) {
 
 function ArtisanNavigationShell({ children }) {
   return (
-    <>
+    <div className="min-h-screen bg-[#FAF9F6]">
       <ArtisanNavbar />
-      <main className="pt-20 px-4 md:px-6">{children}</main>
-    </>
+      <main>{children}</main>
+    </div>
   );
 }
 
@@ -121,15 +122,16 @@ export default function App() {
         <Route path="/messagerie/:username" element={<ClientRoute><ChatPage /></ClientRoute>} />
 
         {/* Espace artisan */}
-        <Route path="/artisan/dashboard" element={<ArtisanRoute><ArtisanDashboard /></ArtisanRoute>} />
-        <Route path="/artisan/services" element={<ArtisanRoute><ArtisanServices /></ArtisanRoute>} />
-        <Route path="/artisan/rdv" element={<ArtisanRoute><ArtisanAppointments /></ArtisanRoute>} />
-        <Route path="/artisan/portfolio" element={<ArtisanRoute><ArtisanPortfolio /></ArtisanRoute>} />
-        <Route path="/artisan/certifications" element={<ArtisanRoute><ArtisanCertifications /></ArtisanRoute>} />
+        <Route path="/artisan/dashboard" element={<ArtisanRoute withNavigation><ArtisanDashboard /></ArtisanRoute>} />
+        <Route path="/artisan/services" element={<ArtisanRoute withNavigation><ArtisanServices /></ArtisanRoute>} />
+        <Route path="/artisan/rdv" element={<ArtisanRoute withNavigation><ArtisanAppointments /></ArtisanRoute>} />
+        <Route path="/artisan/portfolio" element={<ArtisanRoute withNavigation><ArtisanPortfolio /></ArtisanRoute>} />
+        <Route path="/artisan/certifications" element={<ArtisanRoute withNavigation><ArtisanCertifications /></ArtisanRoute>} />
+        <Route path="/artisan/clients" element={<ArtisanRoute withNavigation><ArtisanClientsPage /></ArtisanRoute>} />
         <Route path="/artisan/paiements" element={<ArtisanRoute withNavigation><ArtisanPaiements /></ArtisanRoute>} />
         <Route path="/artisan/devis" element={<ArtisanRoute withNavigation><ArtisanQuotesPage /></ArtisanRoute>} />
-        <Route path="/artisan/profil" element={<ArtisanRoute><ArtisanProfilePage /></ArtisanRoute>} />
-        <Route path="/artisan/profil/edit" element={<ArtisanRoute><ArtisanProfileEditPage /></ArtisanRoute>} />
+        <Route path="/artisan/profil" element={<ArtisanRoute withNavigation><ArtisanProfilePage /></ArtisanRoute>} />
+        <Route path="/artisan/profil/edit" element={<ArtisanRoute withNavigation><ArtisanProfileEditPage /></ArtisanRoute>} />
         <Route path="/artisan/mes-conversations" element={<ArtisanRoute withNavigation><ListeConversationsArtisanPage /></ArtisanRoute>} />
         <Route path="/artisan/messagerie/:username" element={<ArtisanRoute withNavigation><ChatPage /></ArtisanRoute>} />
 

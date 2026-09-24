@@ -1,146 +1,51 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
-import ArtisanNavbar from '../../components/ArtisanNavbar';
+import AppIcon from '../../components/AppIcon';
 
 export default function ArtisanCertifications() {
-  const [certifs, setCertifs] = useState([]);
+  const [items, setItems] = useState([]);
   const [form, setForm] = useState({ nom: '', organisme: '', valide_jusquau: '', fichier: null });
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const fetchCertifs = async () => {
-    try {
-      const res = await axios.get('/certifications/mes/');
-      setCertifs(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  const load = async () => {
+    try { const response = await axios.get('/certifications/mes/'); setItems(response.data || []); }
+    catch { setMessage('Impossible de charger vos certifications.'); }
+    finally { setLoading(false); }
   };
+  useEffect(() => { load(); }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const submit = async (event) => {
+    event.preventDefault();
     const data = new FormData();
-    data.append('nom', form.nom);
-    data.append('organisme', form.organisme);
+    data.append('nom', form.nom.trim()); data.append('organisme', form.organisme.trim());
     if (form.valide_jusquau) data.append('valide_jusquau', form.valide_jusquau);
     if (form.fichier) data.append('fichier', form.fichier);
-
     try {
-      if (editingId) {
-        await axios.patch(`/certifications/${editingId}/modifier/`, data, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        setMessage("Certification modifiée ✅");
-      } else {
-        await axios.post('/certifications/ajouter/', data, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        setMessage("Ajoutée avec succès ✅");
-      }
-
-      setForm({ nom: '', organisme: '', valide_jusquau: '', fichier: null });
-      setEditingId(null);
-      fetchCertifs();
-    } catch (err) {
-      console.error(err);
-      setMessage("Erreur lors de l'enregistrement ❌");
-    }
+      if (editingId) await axios.patch(`/certifications/${editingId}/modifier/`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      else await axios.post('/certifications/ajouter/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setForm({ nom: '', organisme: '', valide_jusquau: '', fichier: null }); setEditingId(null); setMessage('Certification enregistrée.'); await load();
+    } catch { setMessage('Impossible d’enregistrer cette certification. Vérifiez le fichier fourni.'); }
   };
 
-  const handleEdit = (certif) => {
-    setForm({
-      nom: certif.nom,
-      organisme: certif.organisme,
-      valide_jusquau: certif.valide_jusquau || '',
-      fichier: null,
-    });
-    setEditingId(certif.id);
-  };
-
-  const handleDelete = async (id) => {
-    if (window.confirm("Supprimer cette certification ?")) {
-      try {
-        await axios.delete(`/certifications/${id}/supprimer/`);
-        fetchCertifs();
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
-
-  useEffect(() => {
-    fetchCertifs();
-  }, []);
+  const remove = async (id) => { if (!window.confirm('Supprimer cette certification ?')) return; try { await axios.delete(`/certifications/${id}/supprimer/`); await load(); } catch { setMessage('Suppression impossible.'); } };
 
   return (
-    <div>
-      <ArtisanNavbar />
-      <div className="p-6">
-        <h2 className="text-xl font-bold mb-4">Mes Certifications</h2>
-
-        {message && <p className="text-blue-600 text-center mb-3">{message}</p>}
-
-        <form onSubmit={handleSubmit} className="grid gap-4 mb-6">
-          <input
-            type="text"
-            placeholder="Nom"
-            value={form.nom}
-            onChange={(e) => setForm({ ...form, nom: e.target.value })}
-            className="border p-2 rounded"
-            required
-          />
-          <input
-            type="text"
-            placeholder="Organisme"
-            value={form.organisme}
-            onChange={(e) => setForm({ ...form, organisme: e.target.value })}
-            className="border p-2 rounded"
-            required
-          />
-          <input
-            type="date"
-            value={form.valide_jusquau}
-            onChange={(e) => setForm({ ...form, valide_jusquau: e.target.value })}
-            className="border p-2 rounded"
-          />
-          <input
-            type="file"
-            onChange={(e) => setForm({ ...form, fichier: e.target.files[0] })}
-            className="border p-2 rounded"
-          />
-          <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-            {editingId ? 'Mettre à jour' : 'Ajouter'}
-          </button>
+    <div className="mx-auto max-w-[1250px] space-y-6 p-4 pb-28 sm:p-6 lg:pb-8">
+      <div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Crédibilité professionnelle</p><h1 className="mt-2 text-3xl font-black">Certifications</h1><p className="mt-2 max-w-2xl text-sm text-[#718078]">Ajoutez vos diplômes, attestations et certifications. La vérification officielle sera gérée par l’administration dans le sprint suivant.</p></div>
+      {message && <p className="rounded-2xl bg-[#EDF4FF] p-3 text-sm font-semibold text-[#3565A8]">{message}</p>}
+      <section className="rounded-[28px] border border-black/5 bg-white p-5 shadow-[0_8px_28px_rgba(30,45,37,0.05)] sm:p-6">
+        <div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#FFF7DD] text-[#8A6500]"><AppIcon name="award" className="h-5 w-5" /></span><div><h2 className="font-black">{editingId ? 'Modifier la certification' : 'Ajouter une certification'}</h2><p className="text-xs text-[#829087]">PDF ou image selon les règles d’upload du backend</p></div></div>
+        <form onSubmit={submit} className="mt-5 grid gap-3 sm:grid-cols-2">
+          <input required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} placeholder="Nom de la certification" className="rounded-2xl border border-black/10 px-4 py-3 text-sm" />
+          <input required value={form.organisme} onChange={(e) => setForm({ ...form, organisme: e.target.value })} placeholder="Organisme délivreur" className="rounded-2xl border border-black/10 px-4 py-3 text-sm" />
+          <label className="text-xs font-bold text-[#607067]">Valide jusqu’au<input type="date" value={form.valide_jusquau} onChange={(e) => setForm({ ...form, valide_jusquau: e.target.value })} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 text-sm font-normal" /></label>
+          <label className="text-xs font-bold text-[#607067]">Justificatif<input type="file" onChange={(e) => setForm({ ...form, fichier: e.target.files?.[0] || null })} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 text-sm font-normal" /></label>
+          <div className="flex gap-2 sm:col-span-2"><button className="rounded-2xl bg-[#0B6B50] px-5 py-3 text-sm font-black text-white">Enregistrer</button>{editingId && <button type="button" onClick={() => { setEditingId(null); setForm({ nom: '', organisme: '', valide_jusquau: '', fichier: null }); }} className="rounded-2xl border border-black/10 px-5 py-3 text-sm font-black">Annuler</button>}</div>
         </form>
-
-        {loading ? (
-          <p>Chargement...</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {certifs.map(cert => (
-              <div key={cert.id} className="border rounded p-4 bg-white shadow">
-                <h3 className="text-lg font-bold">{cert.nom}</h3>
-                <p className="text-sm text-gray-600">{cert.organisme}</p>
-                {cert.valide_jusquau && (
-                  <p className="text-xs italic text-gray-500">Date d'optention {cert.valide_jusquau}</p>
-                )}
-                {cert.fichier && (
-                  <a href={cert.fichier} target="_blank" rel="noreferrer" className="text-blue-500 text-sm underline mt-1 block">
-                    📎 Voir le fichier
-                  </a>
-                )}
-                <div className="mt-2 flex justify-end space-x-2">
-                  <button onClick={() => handleEdit(cert)} className="text-blue-600 text-sm hover:underline">Modifier</button>
-                  <button onClick={() => handleDelete(cert.id)} className="text-red-500 text-sm hover:underline">Supprimer</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      </section>
+      {loading ? <p>Chargement...</p> : items.length === 0 ? <div className="rounded-[28px] border border-dashed border-black/10 bg-white p-10 text-center text-sm text-[#718078]">Aucune certification ajoutée.</div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{items.map((item) => <article key={item.id} className="rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_8px_24px_rgba(30,45,37,0.04)]"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#FFF7DD] text-[#8A6500]"><AppIcon name="award" className="h-5 w-5" /></span><div className="min-w-0"><h3 className="font-black">{item.nom}</h3><p className="text-sm text-[#718078]">{item.organisme}</p></div></div>{item.valide_jusquau && <p className="mt-3 text-xs font-semibold text-[#829087]">Échéance : {new Date(`${item.valide_jusquau}T00:00:00`).toLocaleDateString('fr-FR')}</p>}{item.fichier && <a href={item.fichier} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-black text-[#3565A8]">Voir le justificatif</a>}<div className="mt-4 flex gap-3 text-sm font-bold"><button onClick={() => { setEditingId(item.id); setForm({ nom: item.nom, organisme: item.organisme, valide_jusquau: item.valide_jusquau || '', fichier: null }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[#0B6B50]">Modifier</button><button onClick={() => remove(item.id)} className="text-[#B23A31]">Supprimer</button></div></article>)}</div>}
     </div>
   );
 }
