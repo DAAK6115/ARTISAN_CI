@@ -1,71 +1,111 @@
+import logging
+
+from geopy.distance import geodesic
 from rest_framework import generics, permissions
+from rest_framework.exceptions import PermissionDenied, ValidationError
+
+from accounts.permissions import IsArtisan
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
-from rest_framework.exceptions import PermissionDenied
-from geopy.distance import geodesic
+
+logger = logging.getLogger(__name__)
+
 
 class MyPortfolioView(generics.RetrieveUpdateAPIView):
     serializer_class = PortfolioSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsArtisan]
 
     def get_object(self):
-        portfolio, created = Portfolio.objects.get_or_create(artisan=self.request.user)
+        portfolio, _ = Portfolio.objects.get_or_create(artisan=self.request.user)
         return portfolio
 
 
 class PublicPortfolioView(generics.RetrieveAPIView):
-    queryset = Portfolio.objects.filter(visible=True)
+    queryset = Portfolio.objects.filter(
+        visible=True,
+        artisan__is_active=True,
+    )
     serializer_class = PortfolioSerializer
-    lookup_field = 'artisan__username'
+    lookup_field = "artisan__username"
+    permission_classes = [permissions.AllowAny]
 
 
 class AddRealisationView(generics.CreateAPIView):
     serializer_class = RealisationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsArtisan]
 
     def perform_create(self, serializer):
-        portfolio, created = Portfolio.objects.get_or_create(artisan=self.request.user)
+        portfolio, _ = Portfolio.objects.get_or_create(artisan=self.request.user)
         serializer.save(portfolio=portfolio)
+
 
 class PortfolioMapView(generics.ListAPIView):
     serializer_class = PortfolioSerializer
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        base_qs = Portfolio.objects.filter(visible=True).exclude(latitude=None).exclude(longitude=None)
-        lat = self.request.query_params.get('lat')
-        lng = self.request.query_params.get('lng')
-        radius = float(self.request.query_params.get('radius', 10))  # Par défaut : 10 km
+        base_qs = (
+            Portfolio.objects.filter(visible=True, artisan__is_active=True)
+            .exclude(latitude=None)
+            .exclude(longitude=None)
+        )
 
-        if lat and lng:
-            try:
-                lat = float(lat)
-                lng = float(lng)
-                return [
-                    portfolio for portfolio in base_qs
-                    if geodesic((lat, lng), (float(portfolio.latitude), float(portfolio.longitude))).km <= radius
-                ]
-            except Exception as e:
-                print("Erreur de calcul de distance :", e)
+        lat = self.request.query_params.get("lat")
+        lng = self.request.query_params.get("lng")
 
-        return base_qs
+        try:
+            radius = float(self.request.query_params.get("radius", 10))
+        except (TypeError, ValueError):
+            raise ValidationError({"radius": "Rayon invalide."})
 
+        if radius <= 0 or radius > 1000:
+            raise ValidationError(
+                {"radius": "Le rayon doit être compris entre 0 et 1000 km."}
+            )
+
+        if lat is None or lng is None:
+            return base_qs
+
+        try:
+            lat_value = float(lat)
+            lng_value = float(lng)
+            if not (-90 <= lat_value <= 90 and -180 <= lng_value <= 180):
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValidationError({"localisation": "Coordonnées invalides."})
+
+        try:
+            return [
+                portfolio
+                for portfolio in base_qs
+                if geodesic(
+                    (lat_value, lng_value),
+                    (float(portfolio.latitude), float(portfolio.longitude)),
+                ).km <= radius
+            ]
+        except (TypeError, ValueError):
+            logger.exception("Échec du calcul de distance des portfolios.")
+            raise ValidationError(
+                {"localisation": "Impossible de traiter ces coordonnées."}
+            )
 
 
 class RealisationDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Realisation.objects.all()
     serializer_class = RealisationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsArtisan]
 
     def perform_update(self, serializer):
         realisation = self.get_object()
         if realisation.portfolio.artisan != self.request.user:
-            raise PermissionDenied("Vous n'êtes pas autorisé à modifier cette réalisation.")
-        
-        # ✅ Forcer le portfolio pour éviter l'erreur 400
+            raise PermissionDenied(
+                "Vous n'êtes pas autorisé à modifier cette réalisation."
+            )
         serializer.save(portfolio=realisation.portfolio)
 
     def perform_destroy(self, instance):
         if instance.portfolio.artisan != self.request.user:
-            raise PermissionDenied("Vous n'êtes pas autorisé à supprimer cette réalisation.")
+            raise PermissionDenied(
+                "Vous n'êtes pas autorisé à supprimer cette réalisation."
+            )
         instance.delete()

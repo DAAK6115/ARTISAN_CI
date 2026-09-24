@@ -1,67 +1,109 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework.exceptions import AuthenticationFailed
+import logging
+import secrets
+
+from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
-import random
-from rest_framework.permissions import AllowAny
+from rest_framework import generics, status
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import CustomUser, PasswordResetCode
+from .permissions import IsArtisanOrAdmin
 from .serializers import (
     RegisterSerializer,
-    UserSerializer,
     UpdateProfileSerializer,
-    UserProfileSerializer
+    UserProfileSerializer,
+    UserSerializer,
 )
-from django.contrib.auth import authenticate
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
-from accounts.models import CustomUser
+
+logger = logging.getLogger(__name__)
+
+GENERIC_RESET_MESSAGE = (
+    "Si cette adresse email correspond à un compte, "
+    "un code de réinitialisation a été envoyé."
+)
+
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
     def post(self, request):
-        login = request.data.get("email")  # peut être email ou username
-        password = request.data.get("password")
+        identifier = str(request.data.get("email", "")).strip()
+        password = request.data.get("password", "")
 
-        user = CustomUser.objects.filter(email=login).first() or CustomUser.objects.filter(username=login).first()
+        if not identifier or not password:
+            return Response(
+                {"error": "Identifiants invalides."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
-        if user and user.check_password(password):
-            refresh = RefreshToken.for_user(user)
-            return Response({
+        user = (
+            CustomUser.objects.filter(email__iexact=identifier).first()
+            or CustomUser.objects.filter(username__iexact=identifier).first()
+        )
+
+        # Réponse volontairement identique pour compte inconnu / mot de passe faux / compte suspendu.
+        if (
+            user is None
+            or not user.is_active
+            or not user.check_password(password)
+        ):
+            return Response(
+                {"error": "Identifiants invalides."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
                 "username": user.username,
                 "role": user.role,
-            })
-        return Response({"error": "Identifiants invalides"}, status=401)
+            }
+        )
 
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
-    
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "register"
+
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Compte créé avec succès"}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"message": "Compte créé avec succès."},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        identifier = attrs.get("email")
-        password = attrs.get("password")
+        identifier = attrs.get("email", "")
+        password = attrs.get("password", "")
 
-        user = CustomUser.objects.filter(email=identifier).first() or \
-               CustomUser.objects.filter(username=identifier).first()
+        user = (
+            CustomUser.objects.filter(email__iexact=identifier).first()
+            or CustomUser.objects.filter(username__iexact=identifier).first()
+        )
 
-        if user is None or not user.check_password(password):
+        if (
+            user is None
+            or not user.is_active
+            or not user.check_password(password)
+        ):
             raise AuthenticationFailed("Identifiants invalides.")
 
         data = super().validate({"email": user.email, "password": password})
@@ -72,26 +114,50 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+
+class SecureTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        try:
+            refresh = self.token_class(attrs["refresh"])
+            user_id = refresh["user_id"]
+        except Exception:
+            raise AuthenticationFailed("Jeton de rafraîchissement invalide.")
+
+        user = CustomUser.objects.filter(pk=user_id, is_active=True).first()
+        if not user:
+            raise AuthenticationFailed("Jeton de rafraîchissement invalide.")
+
+        return super().validate(attrs)
+
+
+class SecureTokenRefreshView(TokenRefreshView):
+    serializer_class = SecureTokenRefreshSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
 
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
+        return Response(UserSerializer(request.user).data)
 
 
 class UpdateProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request):
-        serializer = UpdateProfileSerializer(request.user, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Profil mis à jour"})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        serializer = UpdateProfileSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"message": "Profil mis à jour."})
 
 
 class ListArtisansView(generics.ListAPIView):
@@ -99,61 +165,109 @@ class ListArtisansView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return CustomUser.objects.filter(role='artisan')
+        return CustomUser.objects.filter(role="artisan", is_active=True)
 
 
 class ListClientsView(generics.ListAPIView):
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsArtisanOrAdmin]
 
     def get_queryset(self):
-        return CustomUser.objects.filter(role='client')
+        return CustomUser.objects.filter(role="client", is_active=True)
 
 
 class RequestPasswordResetView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset"
+
     def post(self, request):
-        email = request.data.get("email")
-        user = CustomUser.objects.filter(email=email).first()
+        email = str(request.data.get("email", "")).strip().lower()
 
+        # Même réponse dans tous les cas afin d'empêcher l'énumération des comptes.
+        user = CustomUser.objects.filter(email__iexact=email, is_active=True).first()
         if not user:
-            return Response({"error": "Utilisateur introuvable"}, status=404)
+            return Response({"message": GENERIC_RESET_MESSAGE})
 
-        code = ''.join(random.choices('0123456789', k=4))
-        PasswordResetCode.objects.create(user=user, code=code)
+        # Un seul code actif à la fois.
+        PasswordResetCode.objects.filter(user=user, used_at__isnull=True).delete()
 
-        send_mail(
-            "Réinitialisation de mot de passe",
-            f"Voici votre code de réinitialisation : {code} (valable 5 minutes)",
-            "noreply@tonsite.com",  # À personnaliser
-            [email],
-            fail_silently=False
-        )
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        reset_code = PasswordResetCode.objects.create(user=user, code=code)
 
-        return Response({"message": "Code envoyé à votre adresse email."})
+        try:
+            send_mail(
+                subject="Réinitialisation de votre mot de passe ARTISAN_CI",
+                message=(
+                    f"Votre code de réinitialisation est : {code}\n"
+                    "Il est valable pendant 5 minutes.\n"
+                    "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+        except Exception:
+            # Le code ne doit pas rester valable si l'email n'a pas pu être envoyé.
+            reset_code.delete()
+            logger.exception("Échec d'envoi de l'email de réinitialisation.")
+            # Ne pas révéler la panne SMTP ni l'existence du compte au client.
+
+        return Response({"message": GENERIC_RESET_MESSAGE})
 
 
 class ConfirmPasswordResetView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset_confirm"
+
     def post(self, request):
-        email = request.data.get("email")
-        code = request.data.get("code")
-        new_password = request.data.get("new_password")
+        email = str(request.data.get("email", "")).strip().lower()
+        code = str(request.data.get("code", "")).strip()
+        new_password = request.data.get("new_password", "")
 
-        user = CustomUser.objects.filter(email=email).first()
+        # Réponse volontairement générique pour ne pas révéler l'existence du compte.
+        user = CustomUser.objects.filter(email__iexact=email, is_active=True).first()
         if not user:
-            return Response({"error": "Utilisateur introuvable"}, status=404)
+            return Response(
+                {"error": "Code invalide ou expiré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        reset_code = PasswordResetCode.objects.filter(user=user, code=code).order_by('-created_at').first()
-        if not reset_code:
-            return Response({"error": "Code invalide"}, status=400)
+        reset_code = (
+            PasswordResetCode.objects.filter(user=user, used_at__isnull=True)
+            .order_by("-created_at")
+            .first()
+        )
 
-        if reset_code.is_expired():
-            return Response({"error": "Code expiré"}, status=400)
+        if (
+            reset_code is None
+            or not reset_code.is_usable()
+            or not secrets.compare_digest(reset_code.code, code)
+        ):
+            if reset_code and reset_code.is_usable():
+                reset_code.register_failed_attempt()
+            return Response(
+                {"error": "Code invalide ou expiré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            return Response(
+                {"new_password": list(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         user.set_password(new_password)
-        user.save()
+        user.save(update_fields=["password"])
 
-        # Supprime tous les anciens codes
-        PasswordResetCode.objects.filter(user=user).delete()
+        reset_code.mark_used()
+        PasswordResetCode.objects.filter(
+            user=user,
+            used_at__isnull=True,
+        ).exclude(pk=reset_code.pk).delete()
 
         return Response({"message": "Mot de passe mis à jour avec succès."})
 
@@ -162,25 +276,30 @@ class ClientProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Récupère les informations du profil du client."""
-        serializer = UserProfileSerializer(request.user)
-        return Response(serializer.data)
+        return Response(UserProfileSerializer(request.user).data)
 
     def put(self, request):
-        """Met à jour les informations du profil du client."""
-        serializer = UpdateProfileSerializer(request.user, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+        serializer = UpdateProfileSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
 
 class GetUserIdByUsernameView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, username):
-        try:
-            user = CustomUser.objects.get(username=username)
-            return Response({"id": user.id})
-        except CustomUser.DoesNotExist:
-            return Response({"error": "Utilisateur non trouvé"}, status=404)
+        user = CustomUser.objects.filter(
+            username=username,
+            is_active=True,
+        ).only("id").first()
+        if not user:
+            return Response(
+                {"error": "Utilisateur non trouvé."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"id": user.id})
