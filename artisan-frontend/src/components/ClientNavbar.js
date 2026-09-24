@@ -33,6 +33,7 @@ export default function ClientNavbar() {
         <Link to="/client/services" className={`block px-3 py-2 rounded ${isActive('/client/services') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>🛠 Prestations</Link>
         <Link to="/client/rdvs" className={`block px-3 py-2 rounded ${isActive('/client/rdvs') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>📅 Mes rendez-vous</Link>
         <Link to="/client/favoris" className={`block px-3 py-2 rounded ${isActive('/client/favoris') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>📌 Mes favoris</Link>
+        <Link to="/client/devis" className={`block px-3 py-2 rounded ${isActive('/client/devis') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>📄 Mes devis</Link>
         <Link to="/client/paiements" className={`block px-3 py-2 rounded ${isActive('/client/paiements') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>💳 Paiements</Link>
         <Link to="/client/avis" className={`block px-3 py-2 rounded ${isActive('/client/avis') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>⭐ Mes avis</Link>
 

@@ -1,89 +1,101 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 
+const STATUS = {
+  unpaid: ['Non payé', 'bg-amber-100 text-amber-800'],
+  paid: ['Payé', 'bg-green-100 text-green-800'],
+};
+
+function money(value) {
+  return `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`;
+}
+
+function apiError(error) {
+  const data = error?.response?.data;
+  if (data?.detail) return data.detail;
+  if (data?.error) return data.error;
+  const first = data && Object.values(data).flat()[0];
+  return typeof first === 'string' ? first : 'Action impossible.';
+}
+
 export default function PaiementsPage() {
-  const [paiements, setPaiements] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState([]);
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    axios.get('/payments/mes/')
-      .then(res => setPaiements(res.data))
-      .catch(err => {
-        console.error("Erreur lors du chargement des paiements :", err);
-        setMessage("❌ Impossible de charger vos paiements.");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const telechargerRecu = async (paiementId) => {
+  const load = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get(`/payments/${paiementId}/receipt/`, {
-        responseType: 'blob', // On attend un fichier PDF
-      });
+      const response = await axios.get('/payments/mes/');
+      setPayments(response.data);
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+  useEffect(() => { load(); }, []);
+
+  const receipt = async (id) => {
+    try {
+      const response = await axios.get(`/payments/${id}/receipt/`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `recu_paiement_${paiementId}.pdf`);
-      document.body.appendChild(link);
+      link.download = `recu-${id}.pdf`;
       link.click();
-      link.remove();
+      URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Erreur téléchargement du reçu :", error);
-      setMessage("❌ Échec du téléchargement du reçu.");
+      setMessage(`❌ ${apiError(error)}`);
     }
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">💳 Mes Paiements</h1>
+    <div className="p-2 md:p-6">
+      <h1 className="text-2xl font-bold mb-2">💳 Paiements</h1>
+      <p className="text-sm text-gray-500 mb-5">
+        ARTISAN_CI ne vous demande aucun paiement avant la prestation. Après réalisation du service, l’artisan indique uniquement s’il a reçu ou non le règlement.
+      </p>
+      {message && <p className="mb-4 text-blue-700">{message}</p>}
 
-      {message && <p className="text-red-600 mb-4">{message}</p>}
-
-      {loading ? (
-        <p>Chargement des paiements...</p>
-      ) : paiements.length === 0 ? (
-        <p className="text-gray-500">Aucun paiement effectué pour l'instant.</p>
+      {loading ? <p>Chargement...</p> : payments.length === 0 ? (
+        <p className="text-gray-500">Aucun règlement déclaré par un artisan pour le moment.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white border rounded shadow-sm">
-            <thead className="bg-gray-100 text-left">
-              <tr>
-                <th className="px-4 py-2">Service</th>
-                <th className="px-4 py-2">Montant</th>
-                <th className="px-4 py-2">Date</th>
-                <th className="px-4 py-2">Statut</th>
-                <th className="px-4 py-2">Reçu</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paiements.map(p => (
-                <tr key={p.id} className="border-t">
-                  <td className="px-4 py-2">{p.service_titre}</td>
-                  <td className="px-4 py-2">{p.montant} FCFA</td>
-                  <td className="px-4 py-2">{new Date(p.date_paiement).toLocaleString()}</td>
-                  <td className="px-4 py-2">
-                    <span className={`px-2 py-1 text-xs rounded ${
-                      p.statut === 'valide' ? 'bg-green-100 text-green-800' :
-                      p.statut === 'echoue' ? 'bg-red-100 text-red-600' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {p.statut}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      onClick={() => telechargerRecu(p.id)}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      📥 Télécharger
+        <div className="space-y-3">
+          {payments.map((payment) => {
+            const [label, style] = STATUS[payment.statut] || [payment.statut, 'bg-gray-100 text-gray-700'];
+            return (
+              <article key={payment.id} className="bg-white border rounded-xl p-4">
+                <div className="flex flex-wrap justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{payment.service_titre}</p>
+                    <p className="text-sm text-gray-500">Artisan : {payment.artisan_username}</p>
+                    {payment.quote_reference && <p className="text-xs text-gray-500">Devis : {payment.quote_reference}</p>}
+                  </div>
+                  <span className={`${style} px-3 py-1 rounded-full text-xs h-fit`}>{label}</span>
+                </div>
+
+                <p className="mt-3 text-xl font-bold">{money(payment.montant)}</p>
+                {payment.statut === 'paid' && (
+                  <>
+                    <p className="text-sm text-gray-600">Mode : {payment.methode_paiement_label || payment.methode_paiement}</p>
+                    <p className="text-xs text-gray-500">
+                      Déclaré par {payment.declared_by_username || payment.artisan_username}
+                      {payment.declared_at ? ` le ${new Date(payment.declared_at).toLocaleString('fr-FR')}` : ''}
+                    </p>
+                    <button onClick={() => receipt(payment.id)} className="mt-3 text-blue-600 underline text-sm">
+                      Télécharger le reçu
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                )}
+                {payment.statut === 'unpaid' && (
+                  <p className="mt-2 text-sm text-amber-700">L’artisan indique ne pas avoir encore reçu ce règlement.</p>
+                )}
+                {payment.notes && <p className="mt-2 text-sm bg-gray-50 rounded p-2">{payment.notes}</p>}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>

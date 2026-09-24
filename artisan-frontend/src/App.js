@@ -15,6 +15,7 @@ import ArtisanAppointments from './pages/artisan/ArtisanAppointments';
 import ArtisanPortfolio from './pages/artisan/ArtisanPortfolio';
 import ArtisanCertifications from './pages/artisan/ArtisanCertifications';
 import ArtisanPaiements from './pages/artisan/ArtisanPaiements';
+import ArtisanQuotesPage from './pages/artisan/ArtisanQuotesPage';
 import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage';
 import ArtisanProfileEditPage from './pages/artisan/ArtisanProfileEditPage';
 import ListeConversationsArtisanPage from './pages/artisan/ListeConversationsArtisanPage';
@@ -26,6 +27,7 @@ import ServiceDetail from './pages/client/ServiceDetail';
 import FavorisPage from './pages/client/FavorisPage';
 import MesRendezVous from './pages/client/MesRendezVous';
 import PaiementsPage from './pages/client/PaiementsPage';
+import ClientQuotesPage from './pages/client/ClientQuotesPage';
 import ClientNotificationsPage from './pages/client/ClientNotificationsPage';
 import DonnerAvisPage from './pages/client/DonnerAvisPage';
 import ClientProfilePage from './pages/client/ClientProfilePage';
@@ -105,6 +107,7 @@ export default function App() {
         <Route path="/client/favoris" element={<ClientRoute><FavorisPage /></ClientRoute>} />
         <Route path="/client/rdvs" element={<ClientRoute><MesRendezVous /></ClientRoute>} />
         <Route path="/client/paiements" element={<ClientRoute><PaiementsPage /></ClientRoute>} />
+        <Route path="/client/devis" element={<ClientRoute><ClientQuotesPage /></ClientRoute>} />
         <Route path="/client/notifications" element={<ClientRoute><ClientNotificationsPage /></ClientRoute>} />
         <Route path="/client/avis" element={<ClientRoute><DonnerAvisPage /></ClientRoute>} />
         <Route path="/client/noter-artisan/:rdv_id" element={<ClientRoute><NoterArtisanPage /></ClientRoute>} />
@@ -124,7 +127,8 @@ export default function App() {
         <Route path="/artisan/rdv" element={<ArtisanRoute><ArtisanAppointments /></ArtisanRoute>} />
         <Route path="/artisan/portfolio" element={<ArtisanRoute><ArtisanPortfolio /></ArtisanRoute>} />
         <Route path="/artisan/certifications" element={<ArtisanRoute><ArtisanCertifications /></ArtisanRoute>} />
-        <Route path="/artisan/paiements" element={<ArtisanRoute><ArtisanPaiements /></ArtisanRoute>} />
+        <Route path="/artisan/paiements" element={<ArtisanRoute withNavigation><ArtisanPaiements /></ArtisanRoute>} />
+        <Route path="/artisan/devis" element={<ArtisanRoute withNavigation><ArtisanQuotesPage /></ArtisanRoute>} />
         <Route path="/artisan/profil" element={<ArtisanRoute><ArtisanProfilePage /></ArtisanRoute>} />
         <Route path="/artisan/profil/edit" element={<ArtisanRoute><ArtisanProfileEditPage /></ArtisanRoute>} />
         <Route path="/artisan/mes-conversations" element={<ArtisanRoute withNavigation><ListeConversationsArtisanPage /></ArtisanRoute>} />

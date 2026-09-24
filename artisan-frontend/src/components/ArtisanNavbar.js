@@ -17,6 +17,7 @@ export default function ArtisanNavbar() {
         <li><Link to="/artisan/rdv" className={linkClass('/artisan/rdv')}>Mes Rendez-vous</Link></li>
         <li><Link to="/artisan/portfolio" className={linkClass('/artisan/portfolio')}>Mon Portfolio</Link></li>
         <li><Link to="/artisan/certifications" className={linkClass('/artisan/certifications')}>Mes Certifications</Link></li>
+        <li><Link to="/artisan/devis" className={linkClass('/artisan/devis')}>Devis</Link></li>
         <li><Link to="/artisan/paiements" className={linkClass('/artisan/paiements')}>Paiements</Link></li>
         <li><Link to="/artisan/profil" className={linkClass('/artisan/profil')}>Profil</Link></li>
         <li><Link to="/artisan/mes-conversations" className={linkClass('/artisan/mes-conversations')}>Messagerie</Link></li>

@@ -1,123 +1,185 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
-import ArtisanNavbar from '../../components/ArtisanNavbar';
+
+const METHODS = [
+  ['cash', 'Espèces'],
+  ['wave', 'Wave'],
+  ['orange_money', 'Orange Money'],
+  ['mtn_money', 'MTN Money'],
+  ['moov_money', 'Moov Money'],
+  ['bank_transfer', 'Virement bancaire'],
+  ['other', 'Autre'],
+];
+
+function money(value) {
+  return value == null
+    ? 'Montant indisponible'
+    : `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`;
+}
+
+function apiError(error) {
+  const data = error?.response?.data;
+  if (data?.detail) return data.detail;
+  if (data?.error) return data.error;
+  const first = data && Object.values(data).flat()[0];
+  return typeof first === 'string' ? first : 'Action impossible.';
+}
 
 export default function ArtisanPaiements() {
-  const [paiements, setPaiements] = useState([]);
-  const [filtreStatut, setFiltreStatut] = useState('valide'); // Affiche "valide" par défaut
-  const [filtreDate, setFiltreDate] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [methods, setMethods] = useState({});
+  const [notes, setNotes] = useState({});
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submittingId, setSubmittingId] = useState(null);
 
-  const fetchPaiements = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/payments/reçus-artisan/', {
-        params: {
-          statut: filtreStatut,
-          date: filtreDate,
-        },
-      });
-      setPaiements(res.data);
-      setMessage('');
-    } catch (err) {
-      console.error("Erreur de chargement des paiements :", err);
-      setMessage("Erreur de chargement.");
+      const response = await axios.get('/payments/artisan-workspace/');
+      setRows(response.data);
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
     } finally {
       setLoading(false);
     }
-  }, [filtreStatut, filtreDate]);
+  };
 
-  useEffect(() => {
-    fetchPaiements();
-  }, [fetchPaiements]);
+  useEffect(() => { load(); }, []);
 
-  const handleDownload = async (id) => {
+  const declare = async (row, statut) => {
+    if (statut === 'paid' && !methods[row.appointment_id]) {
+      setMessage('❌ Sélectionnez le mode de règlement avant de déclarer le paiement comme reçu.');
+      return;
+    }
+
+    const question = statut === 'paid'
+      ? `Confirmer que vous avez reçu ${money(row.amount)} pour cette prestation ?`
+      : 'Confirmer que vous n’avez pas encore reçu le règlement ?';
+    if (!window.confirm(question)) return;
+
+    setSubmittingId(row.appointment_id);
     try {
-      const res = await axios.get(`/payments/${id}/receipt/`, {
-        responseType: 'blob',
+      await axios.post('/payments/declare/', {
+        appointment_id: row.appointment_id,
+        statut,
+        methode_paiement: statut === 'paid' ? methods[row.appointment_id] : null,
+        notes: notes[row.appointment_id] || '',
       });
+      setMessage(statut === 'paid' ? '✅ Paiement déclaré reçu.' : '✅ Paiement déclaré non reçu.');
+      await load();
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
+    } finally {
+      setSubmittingId(null);
+    }
+  };
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+  const receipt = async (id) => {
+    try {
+      const response = await axios.get(`/payments/${id}/receipt/`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `recu-${id}.pdf`);
-      document.body.appendChild(link);
+      link.download = `recu-${id}.pdf`;
       link.click();
-      link.remove();
-    } catch (err) {
-      console.error("Erreur lors du téléchargement du PDF", err);
-      setMessage("Impossible de télécharger le reçu.");
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
     }
   };
 
   return (
-    <div>
-      <ArtisanNavbar />
-      <div className="p-6">
-        <h2 className="text-2xl font-bold mb-4">📄 Paiements reçus</h2>
+    <div className="p-2 md:p-6">
+      <h1 className="text-2xl font-bold mb-2">💳 Règlements des prestations</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        Aucun règlement n’est demandé avant la prestation. Une fois le service marqué comme terminé, vous seul pouvez indiquer si vous avez été payé ou non.
+      </p>
+      {message && <p className="mb-4 text-blue-700">{message}</p>}
 
-        <div className="flex flex-wrap gap-4 mb-4">
-          <select
-            value={filtreStatut}
-            onChange={(e) => setFiltreStatut(e.target.value)}
-            className="border p-2 rounded"
-          >
-            <option value="">-- Statut --</option>
-            <option value="valide">Validé</option>
-            <option value="en_attente">En attente</option>
-            <option value="echoue">Échoué</option>
-          </select>
-
-          <input
-            type="date"
-            value={filtreDate}
-            onChange={(e) => setFiltreDate(e.target.value)}
-            className="border p-2 rounded"
-          />
-        </div>
-
-        {message && <p className="text-red-600 text-sm mb-3">{message}</p>}
-
-        {loading ? (
-          <p>Chargement...</p>
-        ) : paiements.length === 0 ? (
-          <p className="text-gray-500">Aucun paiement trouvé.</p>
-        ) : (
-          <div className="space-y-4">
-            {paiements.map((p) => (
-              <div key={p.id} className="p-4 border rounded bg-white shadow">
-                <div className="flex justify-between items-center">
-                  <p className="text-lg font-semibold">{p.montant} FCFA</p>
-                  <span
-                    className={`text-xs px-2 py-1 rounded ${
-                      p.statut === 'valide'
-                        ? 'bg-green-100 text-green-800'
-                        : p.statut === 'echoue'
-                        ? 'bg-red-100 text-red-600'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}
-                  >
-                    {p.statut}
-                  </span>
+      {loading ? <p>Chargement...</p> : rows.length === 0 ? (
+        <p className="text-gray-500">Aucune prestation terminée à traiter.</p>
+      ) : (
+        <div className="space-y-4">
+          {rows.map((row) => {
+            const payment = row.payment;
+            const paid = payment?.statut === 'paid';
+            const unpaid = payment?.statut === 'unpaid';
+            return (
+              <article key={row.appointment_id} className="bg-white border rounded-xl p-4">
+                <div className="flex flex-wrap justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{row.client_username} · {row.service_titre}</p>
+                    <p className="text-xs text-gray-500">Rendez-vous #{row.appointment_id}</p>
+                    {row.quote_reference && <p className="text-xs text-gray-500">Devis : {row.quote_reference}</p>}
+                  </div>
+                  <strong className="text-lg">{money(row.amount)}</strong>
                 </div>
-                <p className="text-sm text-gray-600">🛠 Service : {p.service_titre}</p>
-                <p className="text-sm text-gray-600">👤 Client : {p.client}</p>
-                <p className="text-sm text-gray-400 italic">
-                  📅 {new Date(p.date_paiement).toLocaleString()}
-                </p>
-                <p className="text-xs text-gray-400">Référence : {p.transaction_id}</p>
-                <button
-                  onClick={() => handleDownload(p.id)}
-                  className="mt-2 text-blue-500 text-sm hover:underline"
-                >
-                  📥 Télécharger le reçu
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+
+                <div className="mt-3">
+                  {paid ? (
+                    <span className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">Payé</span>
+                  ) : unpaid ? (
+                    <span className="inline-block bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm">Non payé</span>
+                  ) : (
+                    <span className="inline-block bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">À déclarer</span>
+                  )}
+                </div>
+
+                {row.can_declare && row.amount != null && (
+                  <div className="mt-4 space-y-3 border-t pt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select
+                        value={methods[row.appointment_id] || ''}
+                        onChange={(e) => setMethods({ ...methods, [row.appointment_id]: e.target.value })}
+                        className="border rounded p-2"
+                      >
+                        <option value="">-- Mode de règlement si payé --</option>
+                        {METHODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <input
+                        type="text"
+                        maxLength={255}
+                        value={notes[row.appointment_id] || ''}
+                        onChange={(e) => setNotes({ ...notes, [row.appointment_id]: e.target.value })}
+                        placeholder="Note facultative"
+                        className="border rounded p-2"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        disabled={submittingId === row.appointment_id}
+                        onClick={() => declare(row, 'unpaid')}
+                        className="border border-amber-300 text-amber-800 px-4 py-2 rounded disabled:opacity-50"
+                      >
+                        Non payé
+                      </button>
+                      <button
+                        disabled={submittingId === row.appointment_id}
+                        onClick={() => declare(row, 'paid')}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded disabled:opacity-50"
+                      >
+                        Marquer comme payé
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {paid && (
+                  <div className="mt-3 text-sm text-gray-600">
+                    <p>Mode : {payment.methode_paiement_label || payment.methode_paiement}</p>
+                    {payment.payment_reference && <p>Référence : {payment.payment_reference}</p>}
+                    {payment.declared_at && <p>Déclaré le {new Date(payment.declared_at).toLocaleString('fr-FR')}</p>}
+                    <button onClick={() => receipt(payment.id)} className="mt-2 text-blue-600 underline">Télécharger le reçu</button>
+                  </div>
+                )}
+
+                {payment?.notes && <p className="mt-2 text-sm bg-gray-50 rounded p-2">{payment.notes}</p>}
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
