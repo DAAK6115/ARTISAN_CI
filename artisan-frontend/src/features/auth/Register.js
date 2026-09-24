@@ -88,7 +88,7 @@ export default function Register() {
 
         <div className="bg-gray-50 py-4 text-center border-t border-gray-100">
           <p className="text-gray-600">
-            Déjà un compte ? <Link to="/" className="text-indigo-600 hover:underline">Se connecter</Link>
+            Déjà un compte ? <Link to="/login" className="text-indigo-600 hover:underline">Se connecter</Link>
           </p>
         </div>
       </div>

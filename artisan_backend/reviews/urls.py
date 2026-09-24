@@ -1,5 +1,13 @@
 from django.urls import path
-from .views import CreateReviewView, PublicArtisanReviewsView, ServiceReviewsView, ArtisanReviewsView, ClientReviewsView, ArtisanClientFeedbackView
+
+from .views import (
+    ArtisanClientFeedbackView,
+    ArtisanReviewsView,
+    ClientReviewsView,
+    CreateReviewView,
+    PublicArtisanReviewsView,
+    ServiceReviewsView,
+)
 
 urlpatterns = [
     path('create/', CreateReviewView.as_view(), name='create-review'),
@@ -7,6 +15,5 @@ urlpatterns = [
     path('artisan/', ArtisanReviewsView.as_view(), name='artisan-reviews'),
     path('mes/', ClientReviewsView.as_view(), name='client-reviews'),
     path('artisan/clients/', ArtisanClientFeedbackView.as_view(), name='artisan-client-feedback'),
-    path('artisan/<str:username>/', PublicArtisanReviewsView.as_view(), name='public-artisan-reviews'),
     path('artisan/<str:username>/', PublicArtisanReviewsView.as_view(), name='public-artisan-reviews'),
 ]

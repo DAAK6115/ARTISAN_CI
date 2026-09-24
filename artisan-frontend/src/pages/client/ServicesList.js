@@ -1,192 +1,184 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
+import AppIcon from '../../components/AppIcon';
+import PublicHeader from '../../components/PublicHeader';
+import { getUserRole, isAuthenticated } from '../../utils/auth';
 
-export default function ServicesList() {
+const categories = [
+  ['alimentation', 'Alimentation'], ['artisanat_d_art', 'Artisanat d’Art'], ['btp', 'Bâtiment & travaux'],
+  ['bois', 'Bois'], ['cuir', 'Cuir'], ['coiffure_esthetique', 'Coiffure & esthétique'],
+  ['couture_habillement', 'Couture'], ['electronique', 'Électronique'], ['energie_renouvelable', 'Énergie renouvelable'],
+  ['mecanique_auto', 'Mécanique auto'], ['metallurgie_soudure', 'Métallurgie & soudure'], ['savonnerie', 'Savonnerie'],
+  ['serigraphie', 'Sérigraphie'], ['services_numeriques', 'Services numériques'], ['transport', 'Transport & logistique'],
+];
+
+const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
+
+export default function ServicesList({ publicMode = false }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [selectedCategorie, setSelectedCategorie] = useState('');
-  const [minPrix, setMinPrix] = useState('');
-  const [maxPrix, setMaxPrix] = useState('');
-
-  const fetchServices = () => {
-    axios.get('/services/')
-      .then(res => setServices(res.data))
-      .catch(err => {
-        console.error("Erreur de chargement :", err);
-        setMessage("❌ Impossible de charger les prestations.");
-      })
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchServices();
-  }, []);
-
-  const toggleLike = (serviceId) => {
-    axios.post(`/likes/toggle/${serviceId}/`)
-      .then(() => {
-        setServices(prev =>
-          prev.map(s =>
-            s.id === serviceId ? { ...s, is_liked: !s.is_liked } : s
-          )
-        );
-      })
-      .catch(err => {
-        console.error("Erreur lors du like/dislike :", err);
-        setMessage("⚠️ Action impossible. Veuillez réessayer.");
-      });
-  };
-
-  const toggleFavori = (serviceId) => {
-    axios.post(`/favoris/toggle/${serviceId}/`)
-      .then(() => {
-        setServices(prev =>
-          prev.map(s =>
-            s.id === serviceId ? { ...s, is_favori: !s.is_favori } : s
-          )
-        );
-      })
-      .catch(err => {
-        console.error("Erreur lors du favori :", err);
-        setMessage("⚠️ Impossible d’ajouter aux favoris.");
-      });
-  };
-
-  // 🔍 Filtrage combiné (catégorie + prix)
-  const filteredServices = services.filter(service => {
-    const matchCategorie = selectedCategorie ? service.categorie === selectedCategorie : true;
-    const matchPrixMin = minPrix ? service.prix >= parseFloat(minPrix) : true;
-    const matchPrixMax = maxPrix ? service.prix <= parseFloat(maxPrix) : true;
-    return matchCategorie && matchPrixMin && matchPrixMax;
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [filters, setFilters] = useState({
+    categorie: searchParams.get('categorie') || '',
+    min_prix: searchParams.get('min_prix') || '',
+    max_prix: searchParams.get('max_prix') || '',
+    mode_intervention: searchParams.get('mode_intervention') || '',
+    mode_tarification: searchParams.get('mode_tarification') || '',
   });
 
-  return (
-    <div className="flex">
-      <div className="flex-1 p-6">
-        <h1 className="text-2xl font-bold mb-4">🎯 Prestations disponibles</h1>
+  const clientConnected = isAuthenticated() && getUserRole() === 'client';
 
-        {message && <p className="text-red-600 mb-4">{message}</p>}
+  const paramsObject = useMemo(() => {
+    const params = {};
+    const q = searchParams.get('search');
+    if (q) params.search = q;
+    ['categorie', 'min_prix', 'max_prix', 'mode_intervention', 'mode_tarification'].forEach((key) => {
+      const value = searchParams.get(key);
+      if (value) params[key] = value;
+    });
+    return params;
+  }, [searchParams]);
 
-        {/* 🔍 Filtres */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          {/* Filtre par catégorie */}
-          <div>
-            <label htmlFor="categorie" className="block mb-1 font-medium">Catégorie</label>
-            <select
-              id="categorie"
-              className="w-full border rounded p-2"
-              value={selectedCategorie}
-              onChange={e => setSelectedCategorie(e.target.value)}
-            >
-              <option value="">Toutes</option>
-              <option value="alimentation">Alimentation</option>
-              <option value="artisanat_d_art">Artisanat d’Art</option>
-              <option value="btp">Bâtiment et Travaux Publics</option>
-              <option value="bois">Bois et dérivés</option>
-              <option value="cuir">Cuir et Peaux</option>
-              <option value="coiffure_esthetique">Coiffure et Esthétique</option>
-              <option value="couture_habillement">Couture et Habillement</option>
-              <option value="electronique">Électronique et Électromécanique</option>
-              <option value="energie_renouvelable">Énergie Renouvelable</option>
-              <option value="mecanique_auto">Mécanique et Réparation Automobile</option>
-              <option value="metallurgie_soudure">Métallurgie et Soudure</option>
-              <option value="savonnerie">Savonnerie</option>
-              <option value="serigraphie">Sérigraphie et Impression</option>
-              <option value="services_numeriques">Services Numériques</option>
-              <option value="transport">Transport et Logistique Artisanale</option>
-            </select>
-          </div>
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setMessage('');
+    axios.get('/services/', { params: paramsObject })
+      .then((response) => mounted && setServices(response.data || []))
+      .catch(() => mounted && setMessage('Impossible de charger les prestations pour le moment.'))
+      .finally(() => mounted && setLoading(false));
+    return () => { mounted = false; };
+  }, [paramsObject]);
 
-          {/* Fourchette de prix */}
-          <div className="flex space-x-2">
-            <div className="flex-1">
-              <label htmlFor="minPrix" className="block mb-1 font-medium">Prix min</label>
-              <input
-                type="number"
-                id="minPrix"
-                value={minPrix}
-                onChange={e => setMinPrix(e.target.value)}
-                className="w-full border rounded p-2"
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="maxPrix" className="block mb-1 font-medium">Prix max</label>
-              <input
-                type="number"
-                id="maxPrix"
-                value={maxPrix}
-                onChange={e => setMaxPrix(e.target.value)}
-                className="w-full border rounded p-2"
-              />
-            </div>
-          </div>
+  const applyFilters = (event) => {
+    event.preventDefault();
+    const next = new URLSearchParams();
+    if (search.trim()) next.set('search', search.trim());
+    Object.entries(filters).forEach(([key, value]) => value && next.set(key, value));
+    setSearchParams(next);
+  };
+
+  const resetFilters = () => {
+    setSearch('');
+    setFilters({ categorie: '', min_prix: '', max_prix: '', mode_intervention: '', mode_tarification: '' });
+    setSearchParams(new URLSearchParams());
+  };
+
+  const toggleFavori = async (serviceId) => {
+    if (!clientConnected) return;
+    try {
+      await axios.post(`/favoris/toggle/${serviceId}/`);
+      setServices((current) => current.map((service) => service.id === serviceId ? { ...service, is_favori: !service.is_favori } : service));
+    } catch {
+      setMessage('Impossible de modifier les favoris.');
+    }
+  };
+
+  const content = (
+    <div className={publicMode ? 'mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8' : 'mx-auto max-w-7xl'}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0B6B50]">Marketplace</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight">Trouvez la prestation adaptée</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66736D]">Recherchez par besoin, catégorie, budget ou mode d’intervention.</p>
+        </div>
+        {!publicMode && <Link to="/client/artisans" className="inline-flex items-center gap-2 text-sm font-bold text-[#0B6B50]">Voir les artisans <AppIcon name="arrow" className="h-4 w-4" /></Link>}
+      </div>
+
+      <form onSubmit={applyFilters} className="mt-6 rounded-[28px] border border-black/5 bg-white p-4 shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <label className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#F5F7F5] px-4 py-3">
+            <AppIcon name="search" className="h-5 w-5 shrink-0 text-[#0B6B50]" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Que recherchez-vous ?" className="w-full bg-transparent text-sm outline-none" />
+          </label>
+          <select value={filters.categorie} onChange={(event) => setFilters({ ...filters, categorie: event.target.value })} className="rounded-2xl border border-[#DFE6E2] bg-white px-4 py-3 text-sm outline-none">
+            <option value="">Toutes les catégories</option>
+            {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select value={filters.mode_intervention} onChange={(event) => setFilters({ ...filters, mode_intervention: event.target.value })} className="rounded-2xl border border-[#DFE6E2] bg-white px-4 py-3 text-sm outline-none">
+            <option value="">Lieu d’intervention</option>
+            <option value="chez_client">Chez moi</option>
+            <option value="atelier">En atelier</option>
+            <option value="les_deux">Les deux</option>
+          </select>
+          <button className="rounded-2xl bg-[#0B6B50] px-6 py-3 text-sm font-black text-white hover:bg-[#095C45]">Rechercher</button>
         </div>
 
-        {/* Résultats */}
-        {loading ? (
-          <p>Chargement...</p>
-        ) : filteredServices.length === 0 ? (
-          <p className="text-gray-500">Aucune prestation ne correspond à vos critères.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredServices.map(service => (
-              <div key={service.id} className="border p-4 rounded shadow bg-white relative">
-                {service.image && (
-                  <img
-                    src={service.image}
-                    alt={service.titre}
-                    className="w-full h-40 object-cover rounded mb-3"
-                  />
-                )}
-                <h2 className="font-semibold text-lg">{service.titre}</h2>
-                <p className="text-sm text-gray-600">{service.categorie}</p>
-                <p className="text-gray-800 font-bold mt-1">{service.prix} FCFA</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <input type="number" min="0" placeholder="Prix minimum" value={filters.min_prix} onChange={(event) => setFilters({ ...filters, min_prix: event.target.value })} className="rounded-xl border border-[#E2E7E4] px-3 py-2.5 text-sm" />
+          <input type="number" min="0" placeholder="Prix maximum" value={filters.max_prix} onChange={(event) => setFilters({ ...filters, max_prix: event.target.value })} className="rounded-xl border border-[#E2E7E4] px-3 py-2.5 text-sm" />
+          <select value={filters.mode_tarification} onChange={(event) => setFilters({ ...filters, mode_tarification: event.target.value })} className="rounded-xl border border-[#E2E7E4] px-3 py-2.5 text-sm">
+            <option value="">Tous les tarifs</option>
+            <option value="fixe">Prix fixe</option>
+            <option value="a_partir_de">À partir de</option>
+            <option value="sur_devis">Sur devis</option>
+          </select>
+          <button type="button" onClick={resetFilters} className="rounded-xl px-3 py-2.5 text-sm font-bold text-[#66736D] hover:bg-[#F5F7F5]">Réinitialiser</button>
+        </div>
+      </form>
 
-                {service.moyenne_avis && (
-                  <p className="text-sm text-yellow-600 mt-1">⭐ {service.moyenne_avis} / 5</p>
-                )}
+      <div className="mt-6 flex items-center justify-between">
+        <p className="text-sm font-semibold text-[#66736D]">{loading ? 'Recherche…' : `${services.length} prestation${services.length > 1 ? 's' : ''}`}</p>
+      </div>
 
-                <p className="text-sm mt-1">
-                  Artisan :{' '}
-                  <Link
-                    to={`/artisans/${service.artisan_username}`}
-                    className="text-blue-500 hover:underline"
-                  >
-                    Voir le profil
-                  </Link>
-                </p>
+      {message && <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{message}</div>}
 
-                <div className="flex justify-between items-center mt-3">
-                  <Link
-                    to={`/client/services/${service.id}`}
-                    className="text-blue-500 hover:underline text-sm"
-                  >
-                    🔍 Voir les détails
-                  </Link>
+      {loading ? (
+        <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-80 animate-pulse rounded-3xl bg-white" />)}</div>
+      ) : services.length === 0 ? (
+        <div className="mt-8 rounded-[28px] border border-dashed border-[#CAD5CF] bg-white p-10 text-center">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#EAF4F0] text-[#0B6B50]"><AppIcon name="search" className="h-5 w-5" /></span>
+          <h2 className="mt-4 font-black">Aucune prestation trouvée</h2>
+          <p className="mt-1 text-sm text-[#718078]">Essayez d’élargir vos filtres ou de rechercher un autre métier.</p>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {services.map((service) => {
+            const detailPath = publicMode ? `/prestations/${service.id}` : `/client/services/${service.id}`;
+            return (
+              <article key={service.id} className="group overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_12px_35px_rgba(20,38,30,0.06)] transition hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(20,38,30,0.10)]">
+                <Link to={detailPath} className="block">
+                  {service.image ? <img src={service.image} alt="" className="h-48 w-full object-cover transition duration-500 group-hover:scale-[1.025]" /> : <div className="grid h-48 place-items-center bg-gradient-to-br from-[#EAF4F0] to-[#FFF4E8] text-[#0B6B50]"><AppIcon name="tools" className="h-10 w-10" /></div>}
+                </Link>
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold uppercase tracking-wide text-[#7A8780]">{service.categorie_label || service.categorie}</p>
+                      <Link to={detailPath} className="mt-1 block truncate text-lg font-black text-[#111815]">{service.titre}</Link>
+                    </div>
+                    {service.moyenne_avis && <span className="shrink-0 rounded-full bg-[#FFF7DD] px-2.5 py-1 text-xs font-black text-[#926800]">★ {service.moyenne_avis}</span>}
+                  </div>
 
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => toggleLike(service.id)}
-                      className={`text-sm px-2 py-1 rounded ${service.is_liked ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}
-                    >
-                      {service.is_liked ? '❤️' : '🤍'}
-                    </button>
+                  <p className="mt-3 line-clamp-2 min-h-[40px] text-sm leading-5 text-[#66736D]">{service.description}</p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[#526159]">
+                    <span className="rounded-full bg-[#F2F5F3] px-2.5 py-1">{service.mode_intervention_label}</span>
+                    <span className="rounded-full bg-[#F2F5F3] px-2.5 py-1">{service.duree_minutes} min</span>
+                  </div>
 
-                    <button
-                      onClick={() => toggleFavori(service.id)}
-                      className={`text-sm px-2 py-1 rounded ${service.is_favori ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}
-                    >
-                      {service.is_favori ? '🔖 Retirer' : '📌 Favori'}
-                    </button>
+                  <div className="mt-5 flex items-end justify-between gap-3 border-t border-black/5 pt-4">
+                    <div>
+                      <Link to={`/artisans/${service.artisan_username}`} className="text-xs font-semibold text-[#66736D] hover:text-[#0B6B50]">{service.artisan_username}</Link>
+                      <p className="mt-1 text-base font-black text-[#0B6B50]">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatPrice(service.prix)} FCFA`}</p>
+                    </div>
+                    {clientConnected ? (
+                      <button onClick={() => toggleFavori(service.id)} aria-label={service.is_favori ? 'Retirer des favoris' : 'Ajouter aux favoris'} className={`grid h-10 w-10 place-items-center rounded-2xl ${service.is_favori ? 'bg-[#FFF0EE] text-[#C64A3F]' : 'bg-[#F3F5F4] text-[#65736B]'}`}>
+                        <AppIcon name="heart" className="h-5 w-5" />
+                      </button>
+                    ) : (
+                      <Link to="/login" className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F3F5F4] text-[#65736B]" aria-label="Se connecter pour ajouter aux favoris"><AppIcon name="heart" className="h-5 w-5" /></Link>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
+
+  return publicMode ? <div className="min-h-screen bg-[#FAF9F6]"><PublicHeader />{content}</div> : content;
 }

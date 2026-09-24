@@ -5,6 +5,7 @@ import PublicOnlyRoute from './components/PublicOnlyRoute';
 import ClientNavbar from './components/ClientNavbar';
 import ArtisanNavbar from './components/ArtisanNavbar';
 
+import HomePage from './pages/HomePage';
 import Login from './features/auth/Login';
 import Register from './features/auth/Register';
 import ForgotPassword from './features/auth/ForgotPassword';
@@ -44,16 +45,15 @@ import RoleHomeRedirect from './pages/system/RoleHomeRedirect';
 
 function ClientLayout({ children }) {
   return (
-    <div className="min-h-screen md:flex bg-gray-50">
+    <div className="min-h-screen bg-[#FAF9F6] md:flex">
       <ClientNavbar />
-      <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-4 pb-28 sm:px-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
+        {children}
+      </main>
     </div>
   );
 }
 
-// Certaines pages artisan historiques affichent déjà ArtisanNavbar elles-mêmes.
-// Ce shell est réservé aux pages qui n'ont pas encore leur propre navigation,
-// afin d'éviter un double menu pendant cette phase de nettoyage.
 function ArtisanNavigationShell({ children }) {
   return (
     <>
@@ -74,9 +74,7 @@ function ClientRoute({ children }) {
 function ArtisanRoute({ children, withNavigation = false }) {
   return (
     <PrivateRoute allowedRoles={['artisan']}>
-      {withNavigation ? (
-        <ArtisanNavigationShell>{children}</ArtisanNavigationShell>
-      ) : children}
+      {withNavigation ? <ArtisanNavigationShell>{children}</ArtisanNavigationShell> : children}
     </PrivateRoute>
   );
 }
@@ -85,19 +83,20 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        {/* Authentification publique */}
-        <Route path="/" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
-        <Route path="/login" element={<Navigate to="/" replace />} />
+        {/* Marketplace publique */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/prestations" element={<ServicesList publicMode />} />
+        <Route path="/prestations/:id" element={<ServiceDetail publicMode />} />
+        <Route path="/artisans/:username" element={<ArtisanPublicProfilePage />} />
+
+        {/* Authentification */}
+        <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
         <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
         <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
         <Route path="/forgotpassword" element={<Navigate to="/forgot-password" replace />} />
 
-        {/* Redirection vers l'espace correspondant au rôle connecté */}
         <Route path="/dashboard" element={<PrivateRoute><RoleHomeRedirect /></PrivateRoute>} />
         <Route path="/dashboard/:username" element={<PrivateRoute><RoleHomeRedirect /></PrivateRoute>} />
-
-        {/* Profil artisan public : accessible sans compte */}
-        <Route path="/artisans/:username" element={<ArtisanPublicProfilePage />} />
 
         {/* Espace client */}
         <Route path="/client/dashboard" element={<ClientRoute><ClientDashboard /></ClientRoute>} />
@@ -117,7 +116,7 @@ export default function App() {
         <Route path="/client/mes-conversations" element={<ClientRoute><ListeConversationsPage /></ClientRoute>} />
         <Route path="/client/messagerie/:username" element={<ClientRoute><ChatPage /></ClientRoute>} />
 
-        {/* Compatibilité avec les anciens liens déjà présents dans le projet */}
+        {/* Compatibilité anciens liens */}
         <Route path="/mes-conversations" element={<ClientRoute><ListeConversationsPage /></ClientRoute>} />
         <Route path="/messagerie/:username" element={<ClientRoute><ChatPage /></ClientRoute>} />
 
@@ -134,7 +133,6 @@ export default function App() {
         <Route path="/artisan/mes-conversations" element={<ArtisanRoute withNavigation><ListeConversationsArtisanPage /></ArtisanRoute>} />
         <Route path="/artisan/messagerie/:username" element={<ArtisanRoute withNavigation><ChatPage /></ArtisanRoute>} />
 
-        {/* Erreurs contrôlées */}
         <Route path="/forbidden" element={<ForbiddenPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

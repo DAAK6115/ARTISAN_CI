@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
-import axios from '../../utils/axiosInstance';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CircleMarker, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { Link, useNavigate } from 'react-router-dom';
+import axios from '../../utils/axiosInstance';
+import AppIcon from '../../components/AppIcon';
+import 'leaflet/dist/leaflet.css';
 
-// Corriger les icônes Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
@@ -13,236 +13,122 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-// 🔴 Icône rouge pour la position utilisateur
-const redIcon = new L.Icon({
-  iconUrl: '/icons/marker-icon-red.png',  // depuis public/
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-  shadowSize: [41, 41],
-});
-
-
-// 📏 Fonction Haversine pour calcul de distance en km
-function getDistanceKm(lat1, lon1, lat2, lon2) {
-  const R = 6371; // rayon de la Terre en km
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return (R * c).toFixed(2);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export default function ArtisansList() {
   const [artisans, setArtisans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
   const [position, setPosition] = useState(null);
-  const navigate = useNavigate();
+  const [radius, setRadius] = useState('25');
+  const [view, setView] = useState('list');
 
-  const artisansManuels = [
-    {
-      id: 'manuel1',
-      artisan_nom: 'Fatou',
-      bio: 'Coiffeuse spécialisée en tresses africaines',
-      latitude: 5.3795052,
-      longitude: -3.9357957,
-    },
-    {
-      id: 'manuel2',
-      artisan_nom: 'Mamadou',
-      bio: 'Menuisier expérimenté',
-      latitude: 5.3787895,
-      longitude: -3.9375445,
-    },
-    {
-      id: 'manuel3',
-      artisan_nom: 'Koffi',
-      bio: 'Mécanicien auto et moto',
-      latitude: 5.2232097,
-      longitude: -3.7344628,
-    },
-    {
-      id: 'manuel4',
-      artisan_nom: 'Aïcha',
-      bio: 'Couturière de tenues traditionnelles',
-      latitude: 5.2227693,
-      longitude: -3.7282347,
-    },
-    {
-      id: 'manuel5',
-      artisan_nom: 'Serge',
-      bio: 'Plombier certifié',
-      latitude: 5.3680932,
-      longitude: -3.9462030,
-    },
-    {
-      id: 'manuel6',
-      artisan_nom: 'Marius',
-      bio: 'Électricien bâtiment',
-      latitude: 5.3682360,
-      longitude: -3.9470735,
-    },
-    {
-      id: 'manuel7',
-      artisan_nom: 'Nadia',
-      bio: 'Esthéticienne et maquilleuse professionnelle',
-      latitude: 5.3792023,
-      longitude: -3.9360001,
-    },
-  ];
+  const loadArtisans = async (coordinates = null, selectedRadius = radius) => {
+    setLoading(true);
+    setMessage('');
+    try {
+      const params = coordinates ? { lat: coordinates[0], lng: coordinates[1], radius: Number(selectedRadius) } : {};
+      const response = await axios.get('/portfolio/map/', { params });
+      setArtisans(response.data || []);
+    } catch {
+      setMessage('Impossible de charger les artisans pour le moment.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const allArtisans = [...artisans, ...artisansManuels];
+  useEffect(() => { loadArtisans(); }, []);
 
-  const fetchArtisans = () => {
+  const useMyPosition = () => {
+    if (!navigator.geolocation) {
+      setMessage('La géolocalisation n’est pas disponible sur cet appareil.');
+      return;
+    }
+    setMessage('');
     navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        const userPos = [coords.latitude, coords.longitude];
-        setPosition(userPos);
-        try {
-          const res = await axios.get('/portfolio/map/', {
-            params: { lat: coords.latitude, lng: coords.longitude, radius: 1000 }
-          });
-          setArtisans(res.data);
-        } catch (err) {
-          console.error("Erreur lors du chargement des artisans :", err);
-          setMessage("Impossible de récupérer les artisans.");
-        } finally {
-          setLoading(false);
-        }
+      ({ coords }) => {
+        const current = [coords.latitude, coords.longitude];
+        setPosition(current);
+        loadArtisans(current, radius);
       },
-      (error) => {
-        console.error("Erreur de géolocalisation :", error);
-        setMessage("Autorisez la géolocalisation pour voir les artisans proches.");
-        setLoading(false);
-      }
+      () => setMessage('Position non disponible. La liste complète reste accessible.'),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
   };
 
-  const handleContact = (artisanId) => {
-    navigate(`/client/chat/${artisanId}`);
-  };
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return artisans
+      .map((artisan) => ({
+        ...artisan,
+        distance: position && artisan.latitude != null && artisan.longitude != null
+          ? distanceKm(position[0], position[1], Number(artisan.latitude), Number(artisan.longitude))
+          : null,
+      }))
+      .filter((artisan) => !needle || [artisan.artisan_nom, artisan.bio, artisan.localisation].some((value) => String(value || '').toLowerCase().includes(needle)))
+      .sort((a, b) => a.distance == null ? 1 : b.distance == null ? -1 : a.distance - b.distance);
+  }, [artisans, position, search]);
 
-  useEffect(() => {
-    fetchArtisans();
-  }, []);
+  const mapPoints = filtered.filter((artisan) => artisan.latitude != null && artisan.longitude != null);
+  const center = position || (mapPoints[0] ? [Number(mapPoints[0].latitude), Number(mapPoints[0].longitude)] : [5.35995, -4.00826]);
 
   return (
-    <div className="flex flex-col p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">🔍 Artisans proches de vous</h1>
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B6B50]">Proximité</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight">Artisans disponibles</h1>
+          <p className="mt-2 text-sm leading-6 text-[#66736D]">La géolocalisation est facultative : vous pouvez toujours parcourir tous les profils publics.</p>
+        </div>
+        <div className="flex rounded-2xl bg-white p-1 shadow-sm ring-1 ring-black/5">
+          <button onClick={() => setView('list')} className={`rounded-xl px-4 py-2 text-sm font-bold ${view === 'list' ? 'bg-[#0B6B50] text-white' : 'text-[#66736D]'}`}>Liste</button>
+          <button onClick={() => setView('map')} className={`rounded-xl px-4 py-2 text-sm font-bold ${view === 'map' ? 'bg-[#0B6B50] text-white' : 'text-[#66736D]'}`}>Carte</button>
+        </div>
+      </div>
 
-      {message && <p className="text-red-500 mb-4">{message}</p>}
+      <div className="mt-6 grid gap-3 rounded-[28px] border border-black/5 bg-white p-4 shadow-[0_12px_35px_rgba(20,38,30,0.05)] md:grid-cols-[1fr_auto_auto]">
+        <label className="flex items-center gap-3 rounded-2xl bg-[#F5F7F5] px-4 py-3"><AppIcon name="search" className="h-5 w-5 text-[#0B6B50]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nom, commune, spécialité…" className="w-full bg-transparent text-sm outline-none" /></label>
+        <select value={radius} onChange={(event) => { setRadius(event.target.value); if (position) loadArtisans(position, event.target.value); }} className="rounded-2xl border border-[#DDE5E0] px-4 py-3 text-sm"><option value="5">5 km</option><option value="10">10 km</option><option value="25">25 km</option><option value="50">50 km</option><option value="100">100 km</option></select>
+        <button onClick={useMyPosition} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111815] px-5 py-3 text-sm font-black text-white"><AppIcon name="pin" className="h-4 w-4" /> Autour de moi</button>
+      </div>
 
-      {position && (
-        <MapContainer center={position} zoom={13} style={{ height: '400px', marginBottom: '30px', borderRadius: '10px' }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {message && <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">{message}</div>}
 
-          {/* 📍 Ta position (en rouge) */}
-          <Marker position={position} icon={redIcon}>
-            <Popup>
-              <strong>📍 Vous êtes ici</strong><br />
-              {position[0].toFixed(5)}, {position[1].toFixed(5)}<br />
-              <a
-                href={`https://www.google.com/maps/search/?api=1&query=${position[0]},${position[1]}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 underline"
-              >
-                🌍 Voir dans Google Maps
-              </a>
-            </Popup>
-          </Marker>
-
-          {/* 🧑 Artisans */}
-          {allArtisans.map((artisan) => {
-            const distanceKm = getDistanceKm(position[0], position[1], artisan.latitude, artisan.longitude);
-            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${position[0]},${position[1]}&destination=${artisan.latitude},${artisan.longitude}`;
-
-            return (
-              <Marker key={artisan.id} position={[artisan.latitude, artisan.longitude]}>
-                <Popup>
-                  <strong>{artisan.artisan_nom}</strong><br />
-                  {artisan.bio}<br />
-                  📏 {distanceKm} km<br />
-                  <a
-                    href={googleMapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline block mt-1"
-                  >
-                    🗺️ Itinéraire
-                  </a>
-                  {artisan.artisan_id && (
-                    <button
-                      onClick={() => handleContact(artisan.artisan_id)}
-                      className="text-blue-600 underline mt-1 block"
-                    >
-                      💬 Contacter
-                    </button>
-                  )}
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
+      {view === 'map' && (
+        <div className="mt-6 overflow-hidden rounded-[28px] border border-black/5 bg-white p-2 shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
+          <MapContainer key={`${center[0]}-${center[1]}-${mapPoints.length}`} center={center} zoom={position ? 12 : 10} style={{ height: '520px', width: '100%', borderRadius: '22px' }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+            {position && <CircleMarker center={position} radius={9} pathOptions={{ color: '#0B6B50', fillColor: '#0B6B50', fillOpacity: 0.9 }}><Popup>Votre position approximative</Popup></CircleMarker>}
+            {mapPoints.map((artisan) => <Marker key={artisan.id} position={[Number(artisan.latitude), Number(artisan.longitude)]}><Popup><strong>{artisan.artisan_nom}</strong><br />{artisan.localisation || 'Localisation non précisée'}<br /><Link to={`/artisans/${artisan.artisan_nom}`}>Voir le profil</Link></Popup></Marker>)}
+          </MapContainer>
+        </div>
       )}
 
-      {/* Liste des artisans */}
-      {!loading && allArtisans.length > 0 && (
-        <>
-          <h2 className="text-xl font-semibold mb-4">🧑‍🔧 Liste des artisans</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {allArtisans.map((artisan) => {
-              const distanceKm = position
-                ? getDistanceKm(position[0], position[1], artisan.latitude, artisan.longitude)
-                : null;
-
-              const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${artisan.latitude},${artisan.longitude}`;
-
-              return (
-                <div key={artisan.id} className="bg-white shadow-md rounded-lg p-4">
-                  <h3 className="font-semibold text-lg">{artisan.artisan_nom}</h3>
-                  <p className="text-sm text-gray-600 mb-1 italic">{artisan.bio}</p>
-                  <p className="text-sm text-gray-500 mb-2">
-                    📍
-                    <a
-                      href={googleMapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline ml-1"
-                    >
-                      {artisan.latitude.toFixed(4)}, {artisan.longitude.toFixed(4)}
-                    </a>
-                  </p>
-                  {distanceKm && (
-                    <p className="text-sm text-green-600">📏 À {distanceKm} km</p>
-                  )}
-                  {artisan.artisan_id && (
-                    <div className="flex justify-between items-center mt-2">
-                      <Link
-                        to={`/artisans/${artisan.artisan_nom}`}
-                        className="text-blue-600 text-sm underline hover:text-blue-800"
-                      >
-                        👁️ Voir le profil
-                      </Link>
-                      <button
-                        onClick={() => handleContact(artisan.artisan_id)}
-                        className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-                      >
-                        💬 Contacter
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
+      {view === 'list' && (
+        <div className="mt-6">
+          <p className="text-sm font-semibold text-[#718078]">{loading ? 'Chargement…' : `${filtered.length} artisan${filtered.length > 1 ? 's' : ''}`}</p>
+          {loading ? <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{[1,2,3,4,5,6].map((item) => <div key={item} className="h-64 animate-pulse rounded-3xl bg-white" />)}</div> : filtered.length === 0 ? <div className="mt-5 rounded-3xl border border-dashed border-[#CAD5CF] bg-white p-10 text-center text-sm text-[#718078]">Aucun artisan ne correspond à cette recherche.</div> : (
+            <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((artisan) => (
+                <article key={artisan.id} className="overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
+                  <div className="relative h-36 bg-gradient-to-br from-[#DCEDE6] via-[#F1F5F2] to-[#FFF1E4]">{artisan.photo_couverture && <img src={artisan.photo_couverture} alt="" className="h-full w-full object-cover" />}<span className="absolute bottom-3 left-4 grid h-14 w-14 place-items-center rounded-2xl border-4 border-white bg-[#0B6B50] text-lg font-black text-white">{String(artisan.artisan_nom || 'A').slice(0,1).toUpperCase()}</span></div>
+                  <div className="p-5 pt-6">
+                    <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-black">{artisan.artisan_nom}</h2><p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[#718078]"><AppIcon name="pin" className="h-3.5 w-3.5" />{artisan.localisation || 'Localisation non renseignée'}</p></div>{artisan.distance != null && <span className="rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]">{artisan.distance.toFixed(1)} km</span>}</div>
+                    <p className="mt-4 line-clamp-3 min-h-[60px] text-sm leading-5 text-[#66736D]">{artisan.bio || 'Cet artisan n’a pas encore renseigné sa présentation.'}</p>
+                    <div className="mt-5 flex gap-2"><Link to={`/artisans/${artisan.artisan_nom}`} className="flex-1 rounded-xl bg-[#0B6B50] px-4 py-2.5 text-center text-sm font-black text-white">Voir le profil</Link><Link to={`/client/messagerie/${artisan.artisan_nom}`} className="grid h-10 w-11 place-items-center rounded-xl bg-[#F2F5F3] text-[#526159]" aria-label={`Écrire à ${artisan.artisan_nom}`}><AppIcon name="chat" className="h-5 w-5" /></Link></div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

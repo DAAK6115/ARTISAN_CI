@@ -1,56 +1,139 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
 import axios from '../utils/axiosInstance';
+import AppIcon from './AppIcon';
 import LogoutButton from './LogoutButton';
+
+const primary = [
+  ['/client/dashboard', 'home', 'Accueil'],
+  ['/client/services', 'search', 'Rechercher'],
+  ['/client/rdvs', 'calendar', 'Rendez-vous'],
+  ['/client/mes-conversations', 'chat', 'Messages'],
+  ['/client/profil', 'user', 'Profil'],
+];
+
+const secondary = [
+  ['/client/artisans', 'user', 'Artisans'],
+  ['/client/favoris', 'heart', 'Favoris'],
+  ['/client/devis', 'file', 'Devis'],
+  ['/client/paiements', 'receipt', 'Paiements'],
+  ['/client/avis', 'star', 'Mes avis'],
+  ['/client/notifications', 'bell', 'Notifications'],
+];
 
 export default function ClientNavbar() {
   const location = useLocation();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const isActive = (path) => location.pathname.startsWith(path);
+  const allItems = useMemo(() => [...primary, ...secondary], []);
 
   useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const res = await axios.get('/notifications/');
-        const unread = res.data.filter((notification) => !notification.lu).length;
-        setUnreadCount(unread);
-      } catch {
-        setUnreadCount(0);
-      }
-    };
+    setMenuOpen(false);
+  }, [location.pathname]);
 
-    fetchNotifications();
-  }, []);
+  useEffect(() => {
+    let mounted = true;
+    axios.get('/notifications/')
+      .then((response) => {
+        if (mounted) setUnreadCount((response.data || []).filter((item) => !item.lu).length);
+      })
+      .catch(() => mounted && setUnreadCount(0));
+    return () => { mounted = false; };
+  }, [location.pathname]);
+
+  const NavLink = ({ item, compact = false }) => {
+    const [path, icon, label] = item;
+    const active = isActive(path);
+    return (
+      <Link
+        to={path}
+        className={`group flex items-center gap-3 rounded-2xl transition ${compact ? 'px-3 py-3' : 'px-3.5 py-3'} ${active ? 'bg-[#EAF4F0] font-bold text-[#0B6B50]' : 'text-[#526159] hover:bg-[#F4F6F4] hover:text-[#111815]'}`}
+      >
+        <span className={`relative grid h-8 w-8 place-items-center rounded-xl ${active ? 'bg-white shadow-sm' : 'bg-transparent'}`}>
+          <AppIcon name={icon} className="h-[18px] w-[18px]" />
+          {path.includes('notifications') && unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#D84A3A] px-1 text-center text-[10px] font-black leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>
+          )}
+        </span>
+        <span className="text-sm">{label}</span>
+      </Link>
+    );
+  };
 
   return (
-    <aside className="w-full md:w-64 bg-white shadow-md px-4 py-4 md:py-6 md:min-h-screen md:sticky md:top-0 md:self-start">
-      <h2 className="text-xl font-bold text-blue-700 mb-6 text-center">👤 Espace Client</h2>
-
-      <nav className="grid grid-cols-2 gap-2 text-sm md:block md:space-y-3" aria-label="Navigation client">
-        <Link to="/client/dashboard" className={`block px-3 py-2 rounded ${isActive('/client/dashboard') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>🏠 Tableau de bord</Link>
-        <Link to="/client/artisans" className={`block px-3 py-2 rounded ${isActive('/client/artisans') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>🧑‍🎨 Artisans</Link>
-        <Link to="/client/services" className={`block px-3 py-2 rounded ${isActive('/client/services') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>🛠 Prestations</Link>
-        <Link to="/client/rdvs" className={`block px-3 py-2 rounded ${isActive('/client/rdvs') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>📅 Mes rendez-vous</Link>
-        <Link to="/client/favoris" className={`block px-3 py-2 rounded ${isActive('/client/favoris') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>📌 Mes favoris</Link>
-        <Link to="/client/devis" className={`block px-3 py-2 rounded ${isActive('/client/devis') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>📄 Mes devis</Link>
-        <Link to="/client/paiements" className={`block px-3 py-2 rounded ${isActive('/client/paiements') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>💳 Paiements</Link>
-        <Link to="/client/avis" className={`block px-3 py-2 rounded ${isActive('/client/avis') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>⭐ Mes avis</Link>
-
-        <Link to="/client/notifications" className={`relative block px-3 py-2 rounded ${isActive('/client/notifications') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>
-          🔔 Notifications
-          {unreadCount > 0 && (
-            <span className="absolute top-1 right-2 min-w-5 h-5 px-1 text-xs text-white bg-red-600 rounded-full inline-flex items-center justify-center">
-              {unreadCount > 99 ? '99+' : unreadCount}
+    <>
+      <aside className="hidden w-72 shrink-0 border-r border-black/5 bg-white md:sticky md:top-0 md:block md:h-screen">
+        <div className="flex h-full flex-col p-4">
+          <Link to="/" className="flex items-center gap-3 px-2 py-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#0B6B50] text-white shadow-sm">
+              <AppIcon name="tools" className="h-5 w-5" />
             </span>
-          )}
+            <div>
+              <p className="font-black tracking-tight text-[#111815]">ARTISAN_CI</p>
+              <p className="text-xs text-[#829087]">Espace client</p>
+            </div>
+          </Link>
+
+          <nav className="mt-5 space-y-1" aria-label="Navigation client">
+            {primary.slice(0, 3).map((item) => <NavLink key={item[0]} item={item} />)}
+            <div className="my-4 border-t border-black/5" />
+            {allItems.filter((item) => !primary.slice(0, 3).some((primaryItem) => primaryItem[0] === item[0])).map((item) => <NavLink key={item[0]} item={item} />)}
+          </nav>
+
+          <div className="mt-auto border-t border-black/5 pt-4">
+            <LogoutButton className="w-full rounded-2xl px-4 py-3 text-left text-sm font-bold text-[#B23A31] hover:bg-[#FFF0EE] disabled:opacity-60" />
+          </div>
+        </div>
+      </aside>
+
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-black/5 bg-white/90 px-4 py-3 backdrop-blur-xl md:hidden">
+        <Link to="/client/dashboard" className="flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#0B6B50] text-white"><AppIcon name="tools" className="h-4 w-4" /></span>
+          <span className="text-sm font-black tracking-tight">ARTISAN_CI</span>
         </Link>
+        <div className="flex items-center gap-2">
+          <Link to="/client/notifications" className="relative grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139]" aria-label="Notifications">
+            <AppIcon name="bell" className="h-5 w-5" />
+            {unreadCount > 0 && <span className="absolute right-1 top-1 min-w-4 rounded-full bg-[#D84A3A] px-1 text-center text-[9px] font-black leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </Link>
+          <button onClick={() => setMenuOpen(true)} className="grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139]" aria-label="Ouvrir le menu">
+            <AppIcon name="menu" className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
 
-        <Link to="/client/profil" className={`block px-3 py-2 rounded ${isActive('/client/profil') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>👤 Profil</Link>
-        <Link to="/client/mes-conversations" className={`block px-3 py-2 rounded ${isActive('/client/mes-conversations') || isActive('/client/messagerie') ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-100'}`}>💬 Messagerie</Link>
-
-        <LogoutButton className="w-full text-left px-3 py-2 rounded text-red-600 hover:bg-red-100 mt-4 disabled:opacity-60" />
+      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[24px] border border-black/5 bg-white/95 p-1.5 shadow-[0_18px_45px_rgba(20,38,30,0.18)] backdrop-blur-xl md:hidden" aria-label="Navigation mobile client">
+        {primary.map(([path, icon, label]) => {
+          const active = isActive(path);
+          return (
+            <Link key={path} to={path} className={`flex min-w-0 flex-col items-center gap-1 rounded-[18px] px-1 py-2 text-[10px] font-bold ${active ? 'bg-[#EAF4F0] text-[#0B6B50]' : 'text-[#718078]'}`}>
+              <AppIcon name={icon} className="h-5 w-5" />
+              <span className="w-full truncate text-center">{label}</span>
+            </Link>
+          );
+        })}
       </nav>
-    </aside>
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px] md:hidden" role="dialog" aria-modal="true">
+          <button className="absolute inset-0" onClick={() => setMenuOpen(false)} aria-label="Fermer" />
+          <div className="absolute inset-x-3 top-3 rounded-[28px] bg-white p-4 shadow-2xl">
+            <div className="flex items-center justify-between px-1 pb-3">
+              <div>
+                <p className="font-black">Menu client</p>
+                <p className="text-xs text-[#718078]">Accès rapide à toutes vos fonctionnalités</p>
+              </div>
+              <button onClick={() => setMenuOpen(false)} className="grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4]" aria-label="Fermer le menu"><AppIcon name="close" className="h-5 w-5" /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {secondary.map((item) => <NavLink key={item[0]} item={item} compact />)}
+            </div>
+            <LogoutButton className="mt-3 w-full rounded-2xl bg-[#FFF0EE] px-4 py-3 text-sm font-bold text-[#B23A31] disabled:opacity-60" />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
