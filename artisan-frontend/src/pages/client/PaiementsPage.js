@@ -22,12 +22,17 @@ export default function PaiementsPage() {
   const [payments, setPayments] = useState([]);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [disputes, setDisputes] = useState([]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/payments/mes/');
-      setPayments(response.data);
+      const [paymentsResponse, disputesResponse] = await Promise.all([
+        axios.get('/payments/mes/'),
+        axios.get('/moderation/disputes/mine/'),
+      ]);
+      setPayments(paymentsResponse.data || []);
+      setDisputes(disputesResponse.data || []);
     } catch (error) {
       setMessage(`❌ ${apiError(error)}`);
     } finally {
@@ -36,6 +41,35 @@ export default function PaiementsPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+
+
+  const replyDispute = async (dispute) => {
+    const body = window.prompt('Ajouter un message au litige', '');
+    if (!body) return;
+    try {
+      await axios.post(`/moderation/disputes/${dispute.id}/messages/`, { body });
+      setMessage('✅ Message ajouté au litige.');
+      await load();
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
+    }
+  };
+
+  const contestPayment = async (payment) => {
+    const reason = window.prompt(
+      'Expliquez pourquoi vous contestez cette déclaration de paiement (10 caractères minimum).',
+      ''
+    );
+    if (!reason) return;
+    try {
+      await axios.post(`/moderation/disputes/payment/${payment.id}/`, { reason });
+      setMessage('✅ Contestation transmise à l’administration.');
+      await load();
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
+    }
+  };
 
   const receipt = async (id) => {
     try {
@@ -65,6 +99,7 @@ export default function PaiementsPage() {
         <div className="space-y-3">
           {payments.map((payment) => {
             const [label, style] = STATUS[payment.statut] || [payment.statut, 'bg-gray-100 text-gray-700'];
+            const dispute = disputes.find((item) => Number(item.payment) === Number(payment.id) && !['resolved', 'closed'].includes(item.status));
             return (
               <article key={payment.id} className="bg-white border rounded-xl p-4">
                 <div className="flex flex-wrap justify-between gap-3">
@@ -73,7 +108,7 @@ export default function PaiementsPage() {
                     <p className="text-sm text-gray-500">Artisan : {payment.artisan_username}</p>
                     {payment.quote_reference && <p className="text-xs text-gray-500">Devis : {payment.quote_reference}</p>}
                   </div>
-                  <span className={`${style} px-3 py-1 rounded-full text-xs h-fit`}>{label}</span>
+                  <div className="flex flex-wrap gap-2"><span className={`${style} px-3 py-1 rounded-full text-xs h-fit`}>{label}</span>{dispute && <><span className="h-fit rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-700">Contesté · {dispute.status_label}</span><button onClick={() => replyDispute(dispute)} className="text-xs font-bold text-[#3565A8] underline">Ajouter un message</button></>}</div>
                 </div>
 
                 <p className="mt-3 text-xl font-bold">{money(payment.montant)}</p>
@@ -84,9 +119,7 @@ export default function PaiementsPage() {
                       Déclaré par {payment.declared_by_username || payment.artisan_username}
                       {payment.declared_at ? ` le ${new Date(payment.declared_at).toLocaleString('fr-FR')}` : ''}
                     </p>
-                    <button onClick={() => receipt(payment.id)} className="mt-3 text-blue-600 underline text-sm">
-                      Télécharger le reçu
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-3"><button onClick={() => receipt(payment.id)} className="text-blue-600 underline text-sm">Télécharger le reçu</button>{!dispute && <button onClick={() => contestPayment(payment)} className="text-sm font-bold text-red-700 underline">Contester cette déclaration</button>}</div>
                   </>
                 )}
                 {payment.statut === 'unpaid' && (

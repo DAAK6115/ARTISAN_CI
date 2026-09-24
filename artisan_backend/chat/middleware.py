@@ -2,30 +2,17 @@ from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+
+from .services import consume_websocket_ticket
 
 
 @database_sync_to_async
-def _get_user_from_access_token(raw_token):
-    authenticator = JWTAuthentication()
-    validated_token = authenticator.get_validated_token(raw_token)
-    user = authenticator.get_user(validated_token)
-
-    if not user.is_active:
-        return AnonymousUser()
-
-    return user
+def _consume_ticket(raw_ticket):
+    return consume_websocket_ticket(raw_ticket)
 
 
-class JwtAuthMiddleware:
-    """
-    Authentifie les WebSockets avec le JWT d'accès.
-
-    Le frontend transmet le token d'accès court dans ?token=...
-    Le serveur n'utilise jamais le username envoyé par le client pour
-    déterminer l'identité du salon.
-    """
+class WebSocketTicketAuthMiddleware:
+    """Authentification WS avec un ticket court, aléatoire et à usage unique."""
 
     def __init__(self, inner):
         self.inner = inner
@@ -35,15 +22,13 @@ class JwtAuthMiddleware:
         scope["user"] = AnonymousUser()
 
         query_string = scope.get("query_string", b"").decode("utf-8", errors="ignore")
-        params = parse_qs(query_string)
-        raw_token = params.get("token", [None])[0]
-
-        if raw_token:
+        raw_ticket = parse_qs(query_string).get("ticket", [None])[0]
+        if raw_ticket:
             try:
-                scope["user"] = await _get_user_from_access_token(raw_token)
-            except (InvalidToken, TokenError, Exception):
-                # L'authentification échouée est traitée par le consumer,
-                # qui ferme la connexion sans exposer le détail de l'erreur.
+                user = await _consume_ticket(raw_ticket)
+                if user:
+                    scope["user"] = user
+            except Exception:
                 scope["user"] = AnonymousUser()
 
         return await self.inner(scope, receive, send)

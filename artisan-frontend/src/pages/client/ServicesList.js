@@ -4,6 +4,8 @@ import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import PublicHeader from '../../components/PublicHeader';
 import { getUserRole, isAuthenticated } from '../../utils/auth';
+import { startSpeechRecognition } from '../../utils/speech';
+import { useDataSaver } from '../../utils/accessibility';
 
 const categories = [
   ['alimentation', 'Alimentation'], ['artisanat_d_art', 'Artisanat d’Art'], ['btp', 'Bâtiment & travaux'],
@@ -30,6 +32,12 @@ export default function ServicesList({ publicMode = false }) {
   });
 
   const clientConnected = isAuthenticated() && getUserRole() === 'client';
+  const dataSaver = useDataSaver();
+
+  const voiceSearch = () => startSpeechRecognition({
+    onResult: (text) => setSearch(text),
+    onError: (msg) => setMessage(msg),
+  });
 
   const paramsObject = useMemo(() => {
     const params = {};
@@ -93,6 +101,7 @@ export default function ServicesList({ publicMode = false }) {
           <label className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#F5F7F5] px-4 py-3">
             <AppIcon name="search" className="h-5 w-5 shrink-0 text-[#0B6B50]" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Que recherchez-vous ?" className="w-full bg-transparent text-sm outline-none" />
+            <button type="button" onClick={voiceSearch} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#0B6B50]" title="Rechercher à la voix"><AppIcon name="mic" className="h-4 w-4" /></button>
           </label>
           <select value={filters.categorie} onChange={(event) => setFilters({ ...filters, categorie: event.target.value })} className="rounded-2xl border border-[#DFE6E2] bg-white px-4 py-3 text-sm outline-none">
             <option value="">Toutes les catégories</option>
@@ -141,13 +150,13 @@ export default function ServicesList({ publicMode = false }) {
             return (
               <article key={service.id} className="group overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_12px_35px_rgba(20,38,30,0.06)] transition hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(20,38,30,0.10)]">
                 <Link to={detailPath} className="block">
-                  {service.image ? <img src={service.image} alt="" className="h-48 w-full object-cover transition duration-500 group-hover:scale-[1.025]" /> : <div className="grid h-48 place-items-center bg-gradient-to-br from-[#EAF4F0] to-[#FFF4E8] text-[#0B6B50]"><AppIcon name="tools" className="h-10 w-10" /></div>}
+                  {service.image && !dataSaver ? <img src={service.image} alt="" loading="lazy" decoding="async" className="h-48 w-full object-cover transition duration-500 group-hover:scale-[1.025]" /> : <div className="grid h-48 place-items-center bg-gradient-to-br from-[#EAF4F0] to-[#FFF4E8] text-[#0B6B50]"><AppIcon name="tools" className="h-10 w-10" /></div>}
                 </Link>
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase tracking-wide text-[#7A8780]">{service.categorie_label || service.categorie}</p>
-                      <Link to={detailPath} className="mt-1 block truncate text-lg font-black text-[#111815]">{service.titre}</Link>
+                      <div className="mt-1 flex flex-wrap items-center gap-2"><Link to={detailPath} className="block truncate text-lg font-black text-[#111815]">{service.titre}</Link>{service.artisan_verified && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">✓ Artisan vérifié</span>}</div>
                     </div>
                     {service.moyenne_avis && <span className="shrink-0 rounded-full bg-[#FFF7DD] px-2.5 py-1 text-xs font-black text-[#926800]">★ {service.moyenne_avis}</span>}
                   </div>

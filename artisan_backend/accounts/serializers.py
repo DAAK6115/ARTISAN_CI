@@ -58,7 +58,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["id", "email", "username", "role", "is_active"]
+        fields = [
+            "id", "email", "username", "role", "is_active",
+            "verification_status", "verification_requested_at",
+            "verification_reviewed_at", "verification_note",
+        ]
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
@@ -91,5 +95,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "numero_momo",
             "qr_wave",
             "is_active",
+            "verification_status",
+            "verification_requested_at",
+            "verification_reviewed_at",
+            "verification_note",
         ]
-        read_only_fields = ["email", "username", "role", "is_active"]
+        read_only_fields = [
+            "email", "username", "role", "is_active",
+            "verification_status", "verification_requested_at",
+            "verification_reviewed_at", "verification_note",
+        ]

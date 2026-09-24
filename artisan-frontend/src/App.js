@@ -4,6 +4,9 @@ import PrivateRoute from './components/PrivateRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import ClientNavbar from './components/ClientNavbar';
 import ArtisanNavbar from './components/ArtisanNavbar';
+import AdminNavbar from './components/AdminNavbar';
+import AccessibilityPanel from './components/AccessibilityPanel';
+import NetworkStatusBanner from './components/NetworkStatusBanner';
 
 import HomePage from './pages/HomePage';
 import Login from './features/auth/Login';
@@ -35,6 +38,14 @@ import DonnerAvisPage from './pages/client/DonnerAvisPage';
 import ClientProfilePage from './pages/client/ClientProfilePage';
 import ClientProfileEditPage from './pages/client/ClientProfileEditPage';
 import NoterArtisanPage from './pages/client/NoterArtisanPage';
+import SupportPage from './pages/shared/SupportPage';
+
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminCertificationsPage from './pages/admin/AdminCertificationsPage';
+import AdminModerationPage from './pages/admin/AdminModerationPage';
+import AdminSupportPage from './pages/admin/AdminSupportPage';
+import AdminAuditPage from './pages/admin/AdminAuditPage';
 
 import ArtisanPublicProfilePage from './pages/ArtisanPublicProfilePage';
 import ChatPage from './pages/chat/ChatPage';
@@ -64,6 +75,15 @@ function ArtisanNavigationShell({ children }) {
   );
 }
 
+function AdminLayout({ children }) {
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] lg:flex">
+      <AdminNavbar />
+      <main className="min-w-0 flex-1">{children}</main>
+    </div>
+  );
+}
+
 function ClientRoute({ children }) {
   return (
     <PrivateRoute allowedRoles={['client']}>
@@ -80,9 +100,19 @@ function ArtisanRoute({ children, withNavigation = false }) {
   );
 }
 
+function AdminRoute({ children }) {
+  return (
+    <PrivateRoute allowedRoles={['admin']}>
+      <AdminLayout>{children}</AdminLayout>
+    </PrivateRoute>
+  );
+}
+
 export default function App() {
   return (
     <Router>
+      <NetworkStatusBanner />
+      <AccessibilityPanel />
       <Routes>
         {/* Marketplace publique */}
         <Route path="/" element={<HomePage />} />
@@ -109,6 +139,7 @@ export default function App() {
         <Route path="/client/paiements" element={<ClientRoute><PaiementsPage /></ClientRoute>} />
         <Route path="/client/devis" element={<ClientRoute><ClientQuotesPage /></ClientRoute>} />
         <Route path="/client/notifications" element={<ClientRoute><ClientNotificationsPage /></ClientRoute>} />
+        <Route path="/client/support" element={<ClientRoute><SupportPage /></ClientRoute>} />
         <Route path="/client/avis" element={<ClientRoute><DonnerAvisPage /></ClientRoute>} />
         <Route path="/client/noter-artisan/:rdv_id" element={<ClientRoute><NoterArtisanPage /></ClientRoute>} />
         <Route path="/client/avis/ajouter/:rdv_id" element={<ClientRoute><NoterArtisanPage /></ClientRoute>} />
@@ -134,6 +165,15 @@ export default function App() {
         <Route path="/artisan/profil/edit" element={<ArtisanRoute withNavigation><ArtisanProfileEditPage /></ArtisanRoute>} />
         <Route path="/artisan/mes-conversations" element={<ArtisanRoute withNavigation><ListeConversationsArtisanPage /></ArtisanRoute>} />
         <Route path="/artisan/messagerie/:username" element={<ArtisanRoute withNavigation><ChatPage /></ArtisanRoute>} />
+        <Route path="/artisan/support" element={<ArtisanRoute withNavigation><SupportPage /></ArtisanRoute>} />
+
+        {/* Administration */}
+        <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        <Route path="/admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
+        <Route path="/admin/certifications" element={<AdminRoute><AdminCertificationsPage /></AdminRoute>} />
+        <Route path="/admin/moderation" element={<AdminRoute><AdminModerationPage /></AdminRoute>} />
+        <Route path="/admin/support" element={<AdminRoute><AdminSupportPage /></AdminRoute>} />
+        <Route path="/admin/audit" element={<AdminRoute><AdminAuditPage /></AdminRoute>} />
 
         <Route path="/forbidden" element={<ForbiddenPage />} />
         <Route path="*" element={<NotFoundPage />} />

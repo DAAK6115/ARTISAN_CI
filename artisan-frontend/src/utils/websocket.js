@@ -1,39 +1,76 @@
-export function createWebSocket(_username, onMessageReceived) {
-  const isLocalhost = window.location.hostname === "localhost";
+import axios from './axiosInstance';
 
-  const WS_BASE_URL = isLocalhost
-    ? "ws://localhost:8000"
-    : "wss://artisan-ci-backend.onrender.com";
+function resolveWsBaseUrl() {
+  const explicit = (process.env.REACT_APP_WS_BASE_URL || '').replace(/\/$/, '');
+  if (explicit) return explicit;
+  const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (local) return 'ws://localhost:8000';
+  return 'wss://artisan-ci-backend.onrender.com';
+}
 
-  const token =
-    localStorage.getItem("access") || localStorage.getItem("token");
+export function createChatSocket(onEvent) {
+  let socket = null;
+  let stopped = false;
+  let retryMs = 1000;
+  let retryTimer = null;
+  let heartbeat = null;
 
-  if (!token) {
-    throw new Error("Authentification requise pour ouvrir la messagerie.");
-  }
+  const emit = (payload) => onEvent?.(payload);
 
-  // Le serveur détermine l'identité du salon à partir du JWT.
-  // Le username fourni par le navigateur n'est plus utilisé comme identité.
-  const ws = new WebSocket(
-    `${WS_BASE_URL}/ws/chat/?token=${encodeURIComponent(token)}`
-  );
-
-  ws.onmessage = (event) => {
+  const connect = async () => {
+    if (stopped) return;
     try {
-      const data = JSON.parse(event.data);
-      onMessageReceived?.(data.message);
+      const { data } = await axios.post('/chat/ws-ticket/');
+      if (!data?.ticket || stopped) return;
+      socket = new WebSocket(`${resolveWsBaseUrl()}/ws/chat/?ticket=${encodeURIComponent(data.ticket)}`);
+
+      socket.onopen = () => {
+        retryMs = 1000;
+        emit({ type: 'socket_status', connected: true });
+        heartbeat = window.setInterval(() => {
+          if (socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'presence_ping' }));
+          }
+        }, 30000);
+      };
+
+      socket.onmessage = (event) => {
+        try { emit(JSON.parse(event.data)); } catch { /* ignore malformed event */ }
+      };
+
+      socket.onclose = () => {
+        if (heartbeat) window.clearInterval(heartbeat);
+        heartbeat = null;
+        emit({ type: 'socket_status', connected: false });
+        if (!stopped) {
+          retryTimer = window.setTimeout(connect, retryMs);
+          retryMs = Math.min(retryMs * 2, 15000);
+        }
+      };
+
+      socket.onerror = () => socket?.close();
     } catch {
-      // Ne jamais faire planter l'interface à cause d'un message WS mal formé.
+      emit({ type: 'socket_status', connected: false });
+      if (!stopped) {
+        retryTimer = window.setTimeout(connect, retryMs);
+        retryMs = Math.min(retryMs * 2, 15000);
+      }
     }
   };
 
-  ws.onclose = () => {
-    // Pas de données sensibles dans les logs du navigateur.
-  };
+  connect();
 
-  ws.onerror = () => {
-    // L'UI gère les erreurs via les requêtes HTTP et les états de chargement.
+  return {
+    sendTyping(receiverId, typing) {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'typing', receiver_id: receiverId, typing: Boolean(typing) }));
+      }
+    },
+    close() {
+      stopped = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      if (heartbeat) window.clearInterval(heartbeat);
+      if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'page_closed');
+    },
   };
-
-  return ws;
 }

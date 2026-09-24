@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+ARTISAN_ENV = os.getenv("ARTISAN_ENV", "development").strip().lower()
+IS_PRODUCTION = ARTISAN_ENV == "production"
+
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -52,6 +55,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "common.apps.CommonConfig",
     "accounts",
     "services",
     "appointments",
@@ -61,6 +65,7 @@ INSTALLED_APPS = [
     "notifications",
     "blog",
     "support",
+    "moderation",
     "certifications",
     "favoris",
     "likes",
@@ -101,13 +106,25 @@ WSGI_APPLICATION = "artisan_backend.wsgi.application"
 ASGI_APPLICATION = "artisan_backend.asgi.application"
 
 
-# Base locale actuelle. La migration PostgreSQL/PostGIS est prévue dans un sprint ultérieur.
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL:
+    import dj_database_url
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "60")),
+            conn_health_checks=True,
+            ssl_require=env_bool("DB_SSL_REQUIRE", not DEBUG),
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+            "OPTIONS": {"timeout": 20},
+        }
+    }
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -150,6 +167,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "EXCEPTION_HANDLER": "common.exception_handler.safe_exception_handler",
     "DEFAULT_THROTTLE_CLASSES": (
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
@@ -161,8 +179,20 @@ REST_FRAMEWORK = {
         "register": "5/hour",
         "password_reset": "5/hour",
         "password_reset_confirm": "10/hour",
+        "chat_message": "60/minute",
+        "ws_ticket": "30/minute",
+        "support_create": "10/hour",
+        "report_create": "10/hour",
+        "dispute_create": "5/hour",
+        "dispute_message": "60/hour",
     },
 }
+
+if not DEBUG:
+    # En production, ne pas exposer l’interface Browsable API ni des rendus HTML.
+    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (
+        "rest_framework.renderers.JSONRenderer",
+    )
 
 
 SIMPLE_JWT = {
@@ -196,13 +226,34 @@ DEFAULT_FROM_EMAIL = os.getenv(
 )
 
 
-# Sprint 1 : couche mémoire locale conservée.
-# Redis sera introduit avec l'industrialisation/scale.
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+                "symmetric_encryption_keys": [SECRET_KEY],
+            },
+        }
+    }
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": os.getenv("REDIS_KEY_PREFIX", "artisan_ci"),
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
+    }
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "artisan-ci-local",
+        }
+    }
 
 
 CORS_ALLOWED_ORIGINS = env_list(
@@ -229,20 +280,22 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 # En-têtes et cookies de sécurité.
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 
-SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", False)
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", IS_PRODUCTION)
 SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
-SECURE_HSTS_PRELOAD = False
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_HSTS_PRELOAD", False)
 
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = env_bool("DJANGO_USE_X_FORWARDED_HOST", IS_PRODUCTION)
 
 
 LOGGING = {

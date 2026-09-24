@@ -8,9 +8,9 @@ import {
 
 const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-export const API_BASE_URL = isLocalhost
+export const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/$/, '') || (isLocalhost
   ? 'http://localhost:8000/api'
-  : 'https://artisan-ci-backend.onrender.com/api';
+  : 'https://artisan-ci-backend.onrender.com/api');
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -88,8 +88,8 @@ axiosInstance.interceptors.response.use(
       return axiosInstance(originalRequest);
     } catch (refreshError) {
       clearSession();
-      if (window.location.pathname !== '/') {
-        window.location.replace('/');
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login?reason=session-expired');
       }
       return Promise.reject(refreshError);
     }

@@ -45,8 +45,31 @@ class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default="client")
     is_active = models.BooleanField(default=True)
+    ARTISAN_VERIFICATION_CHOICES = (
+        ("unverified", "Non vérifié"),
+        ("pending", "En vérification"),
+        ("verified", "Vérifié"),
+        ("rejected", "Refusé"),
+    )
+
     numero_momo = models.CharField(max_length=20, blank=True, null=True)
     qr_wave = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
+    verification_status = models.CharField(
+        max_length=16,
+        choices=ARTISAN_VERIFICATION_CHOICES,
+        default="unverified",
+        db_index=True,
+    )
+    verification_requested_at = models.DateTimeField(blank=True, null=True)
+    verification_reviewed_at = models.DateTimeField(blank=True, null=True)
+    verification_reviewed_by = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="artisan_verification_reviews",
+    )
+    verification_note = models.TextField(blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]

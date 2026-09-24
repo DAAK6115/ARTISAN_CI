@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -17,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .models import CustomUser, PasswordResetCode
-from .permissions import IsArtisanOrAdmin
+from .permissions import IsAdmin, IsArtisan, IsArtisanOrAdmin
 from .serializers import (
     RegisterSerializer,
     UpdateProfileSerializer,
@@ -179,7 +180,7 @@ class UpdateProfileView(APIView):
 
 class ListArtisansView(generics.ListAPIView):
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin]
 
     def get_queryset(self):
         return CustomUser.objects.filter(role="artisan", is_active=True)
@@ -187,7 +188,7 @@ class ListArtisansView(generics.ListAPIView):
 
 class ListClientsView(generics.ListAPIView):
     serializer_class = UserSerializer
-    permission_classes = [IsArtisanOrAdmin]
+    permission_classes = [IsAdmin]
 
     def get_queryset(self):
         return CustomUser.objects.filter(role="client", is_active=True)
@@ -320,3 +321,37 @@ class GetUserIdByUsernameView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response({"id": user.id})
+
+
+class RequestArtisanVerificationView(APIView):
+    permission_classes = [IsArtisan]
+
+    def post(self, request):
+        user = request.user
+        if user.verification_status == "verified":
+            return Response(
+                {"detail": "Votre profil est déjà vérifié."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if user.verification_status == "pending":
+            return Response(
+                {"detail": "Votre demande de vérification est déjà en cours."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.verification_status = "pending"
+        user.verification_requested_at = timezone.now()
+        user.verification_reviewed_at = None
+        user.verification_reviewed_by = None
+        user.verification_note = ""
+        user.save(update_fields=[
+            "verification_status",
+            "verification_requested_at",
+            "verification_reviewed_at",
+            "verification_reviewed_by",
+            "verification_note",
+        ])
+        return Response({
+            "message": "Demande de vérification envoyée.",
+            "verification_status": user.verification_status,
+        })

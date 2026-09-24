@@ -32,12 +32,17 @@ export default function ArtisanPaiements() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState(null);
+  const [disputes, setDisputes] = useState([]);
 
   const load = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/payments/artisan-workspace/');
-      setRows(response.data);
+      const [response, disputesResponse] = await Promise.all([
+        axios.get('/payments/artisan-workspace/'),
+        axios.get('/moderation/disputes/mine/'),
+      ]);
+      setRows(response.data || []);
+      setDisputes(disputesResponse.data || []);
     } catch (error) {
       setMessage(`❌ ${apiError(error)}`);
     } finally {
@@ -46,6 +51,19 @@ export default function ArtisanPaiements() {
   };
 
   useEffect(() => { load(); }, []);
+
+
+  const replyDispute = async (dispute) => {
+    const body = window.prompt('Répondre au litige', '');
+    if (!body) return;
+    try {
+      await axios.post(`/moderation/disputes/${dispute.id}/messages/`, { body });
+      setMessage('✅ Réponse ajoutée au litige.');
+      await load();
+    } catch (error) {
+      setMessage(`❌ ${apiError(error)}`);
+    }
+  };
 
   const declare = async (row, statut) => {
     if (statut === 'paid' && !methods[row.appointment_id]) {
@@ -106,6 +124,7 @@ export default function ArtisanPaiements() {
             const payment = row.payment;
             const paid = payment?.statut === 'paid';
             const unpaid = payment?.statut === 'unpaid';
+            const dispute = payment ? disputes.find((item) => Number(item.payment) === Number(payment.id) && !['resolved', 'closed'].includes(item.status)) : null;
             return (
               <article key={row.appointment_id} className="rounded-[26px] border border-black/5 bg-white p-5 shadow-[0_8px_26px_rgba(30,45,37,0.05)]">
                 <div className="flex flex-wrap justify-between gap-3">
@@ -117,7 +136,7 @@ export default function ArtisanPaiements() {
                   <strong className="text-lg">{money(row.amount)}</strong>
                 </div>
 
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   {paid ? (
                     <span className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">Payé</span>
                   ) : unpaid ? (
@@ -125,6 +144,7 @@ export default function ArtisanPaiements() {
                   ) : (
                     <span className="inline-block bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">À déclarer</span>
                   )}
+                  {dispute && <><span className="inline-block rounded-full bg-red-100 px-3 py-1 text-sm font-black text-red-700">Contesté · {dispute.status_label}</span><button onClick={() => replyDispute(dispute)} className="text-xs font-black text-[#3565A8] underline">Répondre au litige</button></>}
                 </div>
 
                 {row.can_declare && row.amount != null && (

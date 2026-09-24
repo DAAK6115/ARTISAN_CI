@@ -7,9 +7,9 @@ export default function PrivateRoute({ children, allowedRoles = [] }) {
   if (!isAuthenticated()) {
     return (
       <Navigate
-        to="/"
+        to="/login"
         replace
-        state={{ from: location.pathname }}
+        state={{ from: `${location.pathname}${location.search}` }}
       />
     );
   }

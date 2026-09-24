@@ -30,6 +30,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
     realisations = RealisationSerializer(many=True, read_only=True)
     artisan_nom = serializers.CharField(source='artisan.username', read_only=True)
     artisan_id = serializers.IntegerField(source='artisan.id', read_only=True)
+    artisan_verified = serializers.SerializerMethodField()
+    artisan_verification_status = serializers.CharField(source='artisan.verification_status', read_only=True)
 
     # Le GPS du navigateur peut envoyer beaucoup plus de 6 décimales.
     # On accepte d'abord la valeur comme flottant puis on la normalise vers
@@ -40,11 +42,18 @@ class PortfolioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Portfolio
         fields = [
-            'id', 'artisan', 'artisan_id', 'artisan_nom', 'bio', 'photo_couverture',
+            'id', 'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
+            'artisan_verification_status', 'bio', 'photo_couverture',
             'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
             'longitude', 'visible', 'realisations',
         ]
-        read_only_fields = ['artisan', 'artisan_id', 'artisan_nom']
+        read_only_fields = [
+            'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
+            'artisan_verification_status',
+        ]
+
+    def get_artisan_verified(self, obj):
+        return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')
 
     def validate_photo_couverture(self, value):
         if value is None:

@@ -17,6 +17,7 @@ const secondary = [
   ['/artisan/portfolio', 'image', 'Portfolio'],
   ['/artisan/certifications', 'award', 'Certifications'],
   ['/artisan/mes-conversations', 'chat', 'Messages'],
+  ['/artisan/support', 'chat', 'Support'],
 ];
 
 export default function ArtisanNavbar() {

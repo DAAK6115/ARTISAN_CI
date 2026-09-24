@@ -5,6 +5,7 @@ import ArtisanMap from '../components/ArtisanMap';
 import LocationActions from '../components/LocationActions';
 import AppIcon from '../components/AppIcon';
 import PublicHeader from '../components/PublicHeader';
+import ReportButton from '../components/ReportButton';
 import { getUserRole, isAuthenticated } from '../utils/auth';
 
 const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
@@ -65,7 +66,7 @@ export default function ArtisanPublicProfilePage() {
               <div className="flex items-end gap-4">
                 <span className="grid h-24 w-24 shrink-0 place-items-center rounded-[28px] border-[6px] border-white bg-[#0B6B50] text-2xl font-black text-white shadow-lg">{initials}</span>
                 <div className="pb-1">
-                  <h1 className="text-2xl font-black tracking-tight sm:text-3xl">{portfolio.artisan_nom}</h1>
+                  <div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black tracking-tight sm:text-3xl">{portfolio.artisan_nom}</h1>{portfolio.artisan_verified && <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]"><AppIcon name="shield" className="h-3.5 w-3.5" /> Artisan vérifié</span>}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#66736D]">
                     {portfolio.localisation && <span className="inline-flex items-center gap-1.5"><AppIcon name="pin" className="h-4 w-4 text-[#0B6B50]" />{portfolio.localisation}</span>}
                     {averageRating && <span className="rounded-full bg-[#FFF7DD] px-2.5 py-1 text-xs font-black text-[#926800]">★ {averageRating} · {reviews.length} avis</span>}
@@ -76,6 +77,7 @@ export default function ArtisanPublicProfilePage() {
               <div className="flex flex-wrap gap-2">
                 {clientConnected ? <Link to={`/client/messagerie/${username}`} className="inline-flex items-center gap-2 rounded-2xl bg-[#111815] px-4 py-2.5 text-sm font-black text-white"><AppIcon name="chat" className="h-4 w-4" /> Message</Link> : <Link to="/login" className="rounded-2xl bg-[#111815] px-4 py-2.5 text-sm font-black text-white">Se connecter pour contacter</Link>}
                 {portfolio.whatsapp && <a href={`https://wa.me/${String(portfolio.whatsapp).replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="rounded-2xl bg-[#EAF4F0] px-4 py-2.5 text-sm font-black text-[#0B6B50]">WhatsApp</a>}
+                {clientConnected && <ReportButton targetUserId={portfolio.artisan_id} />}
               </div>
             </div>
 
@@ -109,9 +111,9 @@ export default function ArtisanPublicProfilePage() {
             {(portfolio.latitude && portfolio.longitude) && <section className="overflow-hidden rounded-[30px] border border-black/5 bg-white p-3 shadow-[0_12px_35px_rgba(20,38,30,0.05)]"><div className="px-2 pb-3"><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B6B50]">Zone</p><h2 className="mt-1 font-black">Localisation de l’artisan</h2>{portfolio.localisation && <p className="mt-1 text-xs font-semibold text-[#718078]">{portfolio.localisation}</p>}</div><div className="overflow-hidden rounded-[22px]"><ArtisanMap latitude={portfolio.latitude} longitude={portfolio.longitude} height={320} popupText={portfolio.localisation || portfolio.artisan_nom} /></div><div className="px-2 pb-2 pt-3"><LocationActions latitude={portfolio.latitude} longitude={portfolio.longitude} label={portfolio.localisation || portfolio.artisan_nom} compact /></div></section>}
 
             <section className="rounded-[30px] border border-black/5 bg-white p-5 shadow-[0_12px_35px_rgba(20,38,30,0.05)]">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#66736D]">Documents déclarés</p>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#66736D]">Confiance</p>
               <h2 className="mt-1 font-black">Certifications</h2>
-              <p className="mt-2 text-xs leading-5 text-[#8A958F]">Ces documents sont affichés comme informations déclarées. Leur vérification par la plateforme sera ajoutée au sprint de modération.</p>
+              <p className="mt-2 text-xs leading-5 text-[#8A958F]">Seules les certifications vérifiées par l’administration sont affichées publiquement.</p>
               {certifications.length === 0 ? <p className="mt-4 text-sm text-[#718078]">Aucune certification publiée.</p> : <div className="mt-4 space-y-3">{certifications.map((certification) => <div key={certification.id} className="rounded-2xl bg-[#F8F9F7] p-3"><p className="text-sm font-black">{certification.nom}</p><p className="mt-1 text-xs text-[#718078]">{certification.organisme}</p>{certification.fichier && <a href={certification.fichier} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#0B6B50]">Voir le document ↗</a>}</div>)}</div>}
             </section>
           </aside>

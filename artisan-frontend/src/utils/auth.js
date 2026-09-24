@@ -21,8 +21,7 @@ function decodeJwtPayload(token) {
   }
 }
 
-export const getAccessToken = () =>
-  localStorage.getItem(STORAGE_KEYS.access) || localStorage.getItem(STORAGE_KEYS.legacyToken);
+export const getAccessToken = () => localStorage.getItem(STORAGE_KEYS.access);
 export const getRefreshToken = () => localStorage.getItem(STORAGE_KEYS.refresh);
 export const getUsername = () => localStorage.getItem(STORAGE_KEYS.user);
 export const getUserRole = () => localStorage.getItem(STORAGE_KEYS.role);
@@ -37,8 +36,6 @@ export const isAuthenticated = () => {
   const access = getAccessToken();
   if (access && !isTokenExpired(access)) return true;
 
-  // Un refresh encore valide permet à l'intercepteur Axios de restaurer
-  // silencieusement un access token après un rechargement de page.
   const refresh = getRefreshToken();
   return Boolean(refresh && !isTokenExpired(refresh));
 };
@@ -52,16 +49,14 @@ export const saveSession = ({ access, refresh, username, role }) => {
   localStorage.setItem(STORAGE_KEYS.refresh, refresh);
   localStorage.setItem(STORAGE_KEYS.user, username);
   localStorage.setItem(STORAGE_KEYS.role, role);
-  // Compatibilité temporaire avec les anciennes pages du dépôt.
-  localStorage.setItem(STORAGE_KEYS.legacyToken, access);
+  // Nettoyage de l'ancienne clé utilisée avant le Sprint 2.
+  localStorage.removeItem(STORAGE_KEYS.legacyToken);
 };
 
 export const updateTokens = ({ access, refresh }) => {
-  if (access) {
-    localStorage.setItem(STORAGE_KEYS.access, access);
-    localStorage.setItem(STORAGE_KEYS.legacyToken, access);
-  }
+  if (access) localStorage.setItem(STORAGE_KEYS.access, access);
   if (refresh) localStorage.setItem(STORAGE_KEYS.refresh, refresh);
+  localStorage.removeItem(STORAGE_KEYS.legacyToken);
 };
 
 export const clearSession = () => {
@@ -71,5 +66,15 @@ export const clearSession = () => {
 export const getRoleHomePath = (role = getUserRole()) => {
   if (role === 'artisan') return '/artisan/dashboard';
   if (role === 'client') return '/client/dashboard';
+  if (role === 'admin') return '/admin/dashboard';
   return '/forbidden';
+};
+
+export const isSafeRolePath = (path, role) => {
+  if (!path || typeof path !== 'string' || !path.startsWith('/')) return false;
+  if (path.startsWith('//')) return false;
+  if (role === 'client') return path.startsWith('/client/');
+  if (role === 'artisan') return path.startsWith('/artisan/');
+  if (role === 'admin') return path.startsWith('/admin/');
+  return false;
 };

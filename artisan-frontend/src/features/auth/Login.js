@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import axios from '../../utils/axiosInstance';
-import { Link, useNavigate } from 'react-router-dom';
-import { clearSession, saveSession } from '../../utils/auth';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  clearSession,
+  getRoleHomePath,
+  isSafeRolePath,
+  saveSession,
+} from '../../utils/auth';
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('');
@@ -9,6 +14,14 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const sessionMessage = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('reason') === 'session-expired'
+      ? 'Votre session a expiré. Reconnectez-vous pour continuer.'
+      : '';
+  }, [location.search]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -24,14 +37,19 @@ export default function Login() {
         password,
       });
 
+      const role = response.data.role;
       saveSession({
         access: response.data.access,
         refresh: response.data.refresh,
         username: response.data.username,
-        role: response.data.role,
+        role,
       });
 
-      navigate('/dashboard', { replace: true });
+      const requestedPath = location.state?.from;
+      const destination = isSafeRolePath(requestedPath, role)
+        ? requestedPath
+        : getRoleHomePath(role);
+      navigate(destination, { replace: true });
     } catch (err) {
       if (!err.response) {
         setError('Connexion au serveur impossible. Vérifiez votre connexion et réessayez.');
@@ -54,6 +72,12 @@ export default function Login() {
 
           <form onSubmit={handleLogin} className="p-6 space-y-6">
             <h2 className="text-xl font-semibold text-center text-gray-800">Connexion</h2>
+
+            {sessionMessage && !error && (
+              <div role="status" className="bg-amber-50 text-amber-800 border border-amber-100 p-3 rounded-md text-sm">
+                {sessionMessage}
+              </div>
+            )}
 
             {error && (
               <div role="alert" className="bg-red-100 text-red-700 p-3 rounded-md text-sm">

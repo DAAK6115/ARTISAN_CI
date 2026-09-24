@@ -129,3 +129,17 @@ class SecurityAuthTests(APITestCase):
             status.HTTP_401_UNAUTHORIZED,
         )
 
+
+
+class ArtisanVerificationRequestTests(APITestCase):
+    def test_artisan_can_request_verification(self):
+        artisan = CustomUser.objects.create_user(
+            email="verify-artisan@example.com", username="verify-artisan",
+            password="StrongPassword!2026", role="artisan",
+        )
+        self.client.force_authenticate(artisan)
+        response = self.client.post("/api/accounts/artisan/verification/request/", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        artisan.refresh_from_db()
+        self.assertEqual(artisan.verification_status, "pending")
+        self.assertIsNotNone(artisan.verification_requested_at)

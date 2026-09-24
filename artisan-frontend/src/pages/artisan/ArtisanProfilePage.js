@@ -9,15 +9,28 @@ export default function ArtisanProfilePage() {
   const [portfolio, setPortfolio] = useState(null);
   const [certifications, setCertifications] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [account, setAccount] = useState(null);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([axios.get('/portfolio/me/'), axios.get('/certifications/mes/'), axios.get('/reviews/artisan/')])
-      .then(([p, c, r]) => { setPortfolio(p.data); setCertifications(c.data || []); setReviews(r.data || []); })
+    Promise.all([axios.get('/portfolio/me/'), axios.get('/certifications/mes/'), axios.get('/reviews/artisan/'), axios.get('/accounts/me/')])
+      .then(([p, c, r, a]) => { setPortfolio(p.data); setCertifications(c.data || []); setReviews(r.data || []); setAccount(a.data); })
       .catch(() => setError('Impossible de charger votre profil professionnel.'))
       .finally(() => setLoading(false));
   }, []);
+
+
+  const requestVerification = async () => {
+    try {
+      const response = await axios.post('/accounts/artisan/verification/request/');
+      setAccount((current) => ({ ...current, verification_status: response.data.verification_status }));
+      setVerificationMessage('Demande de vérification envoyée à l’administration.');
+    } catch (error) {
+      setVerificationMessage(error?.response?.data?.detail || 'Impossible d’envoyer la demande.');
+    }
+  };
 
   if (loading) return <div className="p-6">Chargement...</div>;
   if (error || !portfolio) return <div className="p-6 text-red-700">{error || 'Profil indisponible.'}</div>;
@@ -29,10 +42,12 @@ export default function ArtisanProfilePage() {
       <section className="overflow-hidden rounded-[30px] border border-black/5 bg-white shadow-[0_12px_36px_rgba(30,45,37,0.06)]">
         {portfolio.photo_couverture ? <img src={portfolio.photo_couverture} alt="Couverture" className="h-56 w-full object-cover sm:h-72" /> : <div className="h-48 bg-gradient-to-br from-[#DDECE6] to-[#F7E9D8]" />}
         <div className="p-5 sm:p-7">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Profil professionnel</p><h1 className="mt-2 text-3xl font-black">{portfolio.artisan_nom}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[#607067]">{portfolio.bio || 'Ajoutez une bio professionnelle pour expliquer clairement votre savoir-faire.'}</p>{portfolio.localisation && <p className="mt-3 text-sm font-bold text-[#435149]">📍 {portfolio.localisation}</p>}</div><Link to="/artisan/profil/edit" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#10271F] px-5 py-3 text-sm font-black text-white"><AppIcon name="user" className="h-4 w-4" /> Modifier</Link></div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Profil professionnel</p><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-3xl font-black">{portfolio.artisan_nom}</h1><span className={`rounded-full px-3 py-1 text-xs font-black ${account?.verification_status === 'verified' ? 'bg-[#EAF4F0] text-[#0B6B50]' : account?.verification_status === 'rejected' ? 'bg-[#FFF0EE] text-[#B23A31]' : 'bg-[#FFF7DD] text-[#745B15]'}`}>{account?.verification_status === 'verified' ? 'Vérifié' : account?.verification_status === 'pending' ? 'En vérification' : account?.verification_status === 'rejected' ? 'Refusé' : 'Non vérifié'}</span></div><p className="mt-2 max-w-2xl text-sm leading-6 text-[#607067]">{portfolio.bio || 'Ajoutez une bio professionnelle pour expliquer clairement votre savoir-faire.'}</p>{portfolio.localisation && <p className="mt-3 text-sm font-bold text-[#435149]">📍 {portfolio.localisation}</p>}</div><Link to="/artisan/profil/edit" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#10271F] px-5 py-3 text-sm font-black text-white"><AppIcon name="user" className="h-4 w-4" /> Modifier</Link></div>
           <div className="mt-6 grid grid-cols-3 gap-3 sm:max-w-xl"><div className="rounded-2xl bg-[#F7F8F6] p-3"><p className="text-xl font-black">{portfolio.realisations?.length || 0}</p><p className="text-xs text-[#718078]">Réalisations</p></div><div className="rounded-2xl bg-[#F7F8F6] p-3"><p className="text-xl font-black">{certifications.length}</p><p className="text-xs text-[#718078]">Certifications</p></div><div className="rounded-2xl bg-[#F7F8F6] p-3"><p className="text-xl font-black">{average || '—'}</p><p className="text-xs text-[#718078]">Note moyenne</p></div></div>
         </div>
       </section>
+
+      {account?.verification_status !== 'verified' && <section className="rounded-[26px] border border-black/5 bg-white p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-black">Vérification ARTISAN_CI</h2><p className="mt-1 text-sm text-[#718078]">Demandez l’examen de votre identité professionnelle. Le badge public n’apparaît qu’après validation administrative.</p>{account?.verification_note && <p className="mt-2 text-xs font-semibold text-[#B23A31]">Note administration : {account.verification_note}</p>}{verificationMessage && <p className="mt-2 text-sm font-semibold text-[#3565A8]">{verificationMessage}</p>}</div><button disabled={account?.verification_status === 'pending'} onClick={requestVerification} className="rounded-2xl bg-[#0B6B50] px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{account?.verification_status === 'pending' ? 'Demande en cours' : 'Demander la vérification'}</button></div></section>}
 
       <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <article className="rounded-[28px] border border-black/5 bg-white p-5">

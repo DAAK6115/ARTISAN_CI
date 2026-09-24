@@ -117,8 +117,11 @@ def validate_chat_media(uploaded_file, max_mb: int = 20):
     if extension in IMAGE_EXTENSIONS:
         return validate_image_upload(uploaded_file, max_mb=min(max_mb, 8))
 
+    if extension == ".pdf":
+        return validate_document_upload(uploaded_file, max_mb=min(max_mb, 10))
+
     if extension not in VIDEO_EXTENSIONS:
-        raise ValidationError("Seules les images et vidéos autorisées peuvent être envoyées.")
+        raise ValidationError("Seules les images, vidéos et PDF autorisés peuvent être envoyés.")
 
     if content_type and content_type not in VIDEO_MIME_TYPES:
         raise ValidationError("Type MIME vidéo non autorisé.")

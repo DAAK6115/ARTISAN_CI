@@ -1,7 +1,7 @@
+@import 'leaflet/dist/leaflet.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import 'leaflet/dist/leaflet.css';
 
 :root {
   color-scheme: light;
@@ -46,3 +46,7 @@ code {
 .leaflet-container {
   font-family: inherit;
 }
+
+html[data-large-text="true"] { font-size: 112.5%; }
+html[data-data-saver="true"] *, html[data-data-saver="true"] *::before, html[data-data-saver="true"] *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; } }

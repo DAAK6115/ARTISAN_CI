@@ -10,6 +10,7 @@ from .views import (
     LogoutView,
     MeView,
     RegisterView,
+    RequestArtisanVerificationView,
     RequestPasswordResetView,
     SecureTokenRefreshView,
     UpdateProfileView,
@@ -29,6 +30,12 @@ urlpatterns = [
 
     path("list/artisans/", ListArtisansView.as_view(), name="list-artisans"),
     path("list/clients/", ListClientsView.as_view(), name="list-clients"),
+
+    path(
+        "artisan/verification/request/",
+        RequestArtisanVerificationView.as_view(),
+        name="request-artisan-verification",
+    ),
 
     path(
         "password-reset/request/",

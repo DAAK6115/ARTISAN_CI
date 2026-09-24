@@ -9,6 +9,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     is_liked = serializers.SerializerMethodField()
     is_favori = serializers.SerializerMethodField()
     artisan_username = serializers.CharField(source='artisan.username', read_only=True)
+    artisan_verified = serializers.SerializerMethodField()
     categorie_label = serializers.CharField(source='get_categorie_display', read_only=True)
     mode_tarification_label = serializers.CharField(source='get_mode_tarification_display', read_only=True)
     mode_intervention_label = serializers.CharField(source='get_mode_intervention_display', read_only=True)
@@ -16,7 +17,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = [
-            'id', 'artisan', 'artisan_username', 'titre', 'description', 'prix',
+            'id', 'artisan', 'artisan_username', 'artisan_verified', 'titre', 'description', 'prix',
             'categorie', 'categorie_label', 'image', 'is_active',
             'mode_tarification', 'mode_tarification_label', 'duree_minutes',
             'delai_reservation_heures', 'mode_intervention', 'mode_intervention_label',
@@ -25,7 +26,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'artisan', 'date_creation', 'moyenne_avis', 'is_active', 'is_liked',
-            'is_favori', 'categorie_label', 'mode_tarification_label',
+            'is_favori', 'artisan_verified', 'categorie_label', 'mode_tarification_label',
             'mode_intervention_label',
         ]
 
@@ -52,6 +53,9 @@ class ServiceSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('Le titre est requis.')
         return value
+
+    def get_artisan_verified(self, obj):
+        return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')
 
     def get_moyenne_avis(self, obj):
         annotated = getattr(obj, 'moyenne_avis_calc', None)

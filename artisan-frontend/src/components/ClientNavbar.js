@@ -19,6 +19,7 @@ const secondary = [
   ['/client/paiements', 'receipt', 'Paiements'],
   ['/client/avis', 'star', 'Mes avis'],
   ['/client/notifications', 'bell', 'Notifications'],
+  ['/client/support', 'chat', 'Support'],
 ];
 
 export default function ClientNavbar() {
