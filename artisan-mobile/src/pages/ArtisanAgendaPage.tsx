@@ -445,7 +445,13 @@ export function ArtisanAgendaPage() {
       {actionTarget ? (
         <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-[2px]" role="dialog" aria-modal="true">
           <button type="button" className="absolute inset-0" onClick={() => setActionTarget(null)} aria-label="Fermer" />
-          <div className="absolute inset-x-3 bottom-3 mx-auto flex max-h-[calc(100dvh-1.5rem)] max-w-[536px] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+          <div
+            className="absolute inset-x-2 bottom-2 mx-auto grid max-w-[536px] overflow-hidden rounded-[28px] bg-white shadow-2xl"
+            style={{
+              maxHeight: 'calc(100dvh - 16px)',
+              gridTemplateRows: 'auto minmax(0, 1fr) auto'
+            }}
+          >
             <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-2 pt-5">
               <div>
                 <p className="text-lg font-black text-[var(--artisan-ink)]">{transitionLabels[actionTarget.statut] ?? 'Mettre à jour'}</p>
@@ -476,7 +482,10 @@ export function ArtisanAgendaPage() {
             {actionError ? <p className="mt-3 rounded-2xl bg-[var(--artisan-danger-soft)] px-3 py-2 text-xs font-semibold text-[var(--artisan-danger)]">{actionError}</p> : null}
             </div>
 
-            <div className="shrink-0 border-t border-black/5 bg-white px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
+            <div
+              className="relative z-20 border-t border-black/5 bg-white px-5 pt-3 shadow-[0_-10px_30px_rgba(20,38,30,0.06)]"
+              style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
+            >
             <button
               type="button"
               disabled={transitionMutation.isPending}
@@ -488,11 +497,13 @@ export function ArtisanAgendaPage() {
                 }
                 transitionMutation.mutate({ id: actionTarget.appointment.id, statut: actionTarget.statut, motif: actionNote.trim() });
               }}
-              className={`flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-black text-white disabled:opacity-60 ${
-                actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan'
-                  ? 'bg-[var(--artisan-danger)]'
-                  : 'bg-[var(--artisan-green)]'
-              }`}
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-black text-white shadow-sm disabled:opacity-60"
+              style={{
+                backgroundColor:
+                  actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan'
+                    ? '#D84A3A'
+                    : '#0B6B50'
+              }}
             >
               {actionTarget.statut === 'en_route' ? <Route size={18} /> : actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan' ? <XCircle size={18} /> : <CheckCircle2 size={18} />}
               {transitionMutation.isPending ? 'Mise à jour…' : transitionLabels[actionTarget.statut] ?? 'Confirmer'}

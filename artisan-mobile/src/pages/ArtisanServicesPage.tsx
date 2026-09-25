@@ -228,7 +228,8 @@ export function ArtisanServicesPage() {
           <button type="button" className="absolute inset-0" onClick={() => setEditorOpen(false)} aria-label="Fermer" />
           <form
             onSubmit={submit}
-            className="absolute inset-x-2 bottom-2 top-2 mx-auto flex max-w-[552px] flex-col overflow-hidden rounded-[30px] bg-white shadow-2xl"
+            className="absolute inset-x-2 bottom-2 top-2 mx-auto grid max-w-[552px] overflow-hidden rounded-[30px] bg-white shadow-2xl"
+            style={{ gridTemplateRows: 'auto minmax(0, 1fr) auto' }}
           >
             <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-3 pt-5">
               <div>
@@ -370,10 +371,15 @@ export function ArtisanServicesPage() {
             {error ? <p className="mt-4 rounded-2xl bg-[var(--artisan-danger-soft)] px-3 py-2.5 text-xs font-semibold text-[var(--artisan-danger)]">{error}</p> : null}
             </div>
 
-            <div className="shrink-0 border-t border-black/5 bg-white px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
+            <div
+              className="relative z-20 border-t border-black/5 bg-white px-5 pt-3 shadow-[0_-10px_30px_rgba(20,38,30,0.06)]"
+              style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
+            >
             <button
+              type="submit"
               disabled={saveMutation.isPending}
-              className="w-full rounded-2xl bg-[var(--artisan-green)] px-4 py-3.5 text-sm font-black text-white shadow-sm disabled:opacity-60"
+              className="min-h-[52px] w-full rounded-2xl px-4 py-3.5 text-sm font-black text-white shadow-sm disabled:opacity-60"
+              style={{ backgroundColor: '#0B6B50' }}
             >
               {saveMutation.isPending ? 'Enregistrement…' : editing ? 'Enregistrer les modifications' : 'Publier la prestation'}
             </button>
