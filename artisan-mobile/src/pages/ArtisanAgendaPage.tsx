@@ -27,6 +27,7 @@ import {
   deleteArtisanTimeOff
 } from '../features/artisan/artisan.api';
 import { updateAppointmentStatus, type AppointmentItem } from '../features/appointments/appointments.api';
+import { completeServiceWithPayment, getCompleteServicePayment } from '../features/artisan/professional.api';
 
 type AgendaTab = 'rendez-vous' | 'horaires';
 type AppointmentFilter = 'tous' | 'en_attente' | 'actifs' | 'termines';
@@ -95,6 +96,10 @@ export function ArtisanAgendaPage() {
   const [actionTarget, setActionTarget] = useState<{ appointment: AppointmentItem; statut: string } | null>(null);
   const [actionNote, setActionNote] = useState('');
   const [actionError, setActionError] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid');
+  const [paymentMethod, setPaymentMethod] = useState('wave');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [timeOffOpen, setTimeOffOpen] = useState(false);
   const [availabilityError, setAvailabilityError] = useState('');
@@ -117,6 +122,13 @@ export function ArtisanAgendaPage() {
     enabled: tab === 'horaires'
   });
 
+  const paymentInfo = useQuery({
+    queryKey: ['artisan-complete-service', actionTarget?.appointment.id],
+    queryFn: () => getCompleteServicePayment(actionTarget!.appointment.id),
+    enabled: actionTarget?.statut === 'termine' && Boolean(actionTarget?.appointment.id),
+    retry: false
+  });
+
   const transitionMutation = useMutation({
     mutationFn: ({ id, statut, motif }: { id: number; statut: string; motif: string }) =>
       updateAppointmentStatus(id, statut, motif || undefined),
@@ -131,6 +143,32 @@ export function ArtisanAgendaPage() {
     },
     onError: (error) => {
       setActionError(error instanceof ApiError ? error.message : 'Impossible de mettre à jour ce rendez-vous.');
+    }
+  });
+
+  const completeServiceMutation = useMutation({
+    mutationFn: ({ id }: { id: number }) => completeServiceWithPayment(id, {
+      statut: paymentStatus,
+      methode_paiement: paymentStatus === 'paid' ? paymentMethod : null,
+      payment_reference: paymentStatus === 'paid' ? paymentReference.trim() : '',
+      notes: paymentNotes.trim()
+    }),
+    onSuccess: async () => {
+      setActionTarget(null);
+      setPaymentStatus('paid');
+      setPaymentMethod('wave');
+      setPaymentReference('');
+      setPaymentNotes('');
+      setActionError('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['artisan-appointments'] }),
+        queryClient.invalidateQueries({ queryKey: ['artisan-dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['artisan-payment-workspace'] }),
+        queryClient.invalidateQueries({ queryKey: ['artisan-payments'] })
+      ]);
+    },
+    onError: (error) => {
+      setActionError(error instanceof ApiError ? error.message : 'Impossible de terminer cette prestation.');
     }
   });
 
@@ -325,6 +363,10 @@ export function ArtisanAgendaPage() {
                                 onClick={() => {
                                   setActionError('');
                                   setActionNote('');
+                                  setPaymentStatus('paid');
+                                  setPaymentMethod('wave');
+                                  setPaymentReference('');
+                                  setPaymentNotes('');
                                   setActionTarget({ appointment: item, statut: transition });
                                 }}
                                 className={`rounded-2xl px-3.5 py-2.5 text-xs font-black transition active:scale-[.98] ${
@@ -461,7 +503,55 @@ export function ArtisanAgendaPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-1">
-            {(actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan') ? (
+            {actionTarget.statut === 'termine' ? (
+              <div className="mt-4 space-y-4">
+                {paymentInfo.isPending ? <div className="h-20 animate-pulse rounded-2xl bg-[#F4F6F4]" /> : null}
+                {paymentInfo.data ? (
+                  <div className="rounded-2xl bg-[#F7F8F6] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-[#829087]">Montant de la prestation</p>
+                    <p className="mt-1 text-xl font-black text-[var(--artisan-green)]">{new Intl.NumberFormat('fr-CI').format(Number(paymentInfo.data.montant || 0))} FCFA</p>
+                    {paymentInfo.data.quote_reference ? <p className="mt-1 text-[10px] font-semibold text-[var(--artisan-muted)]">Devis {paymentInfo.data.quote_reference}</p> : null}
+                  </div>
+                ) : null}
+                {paymentInfo.isError ? <p className="rounded-2xl bg-[var(--artisan-danger-soft)] px-3 py-2 text-xs font-semibold text-[var(--artisan-danger)]">Impossible de préparer la déclaration de règlement.</p> : null}
+
+                <div>
+                  <p className="text-xs font-black text-[var(--artisan-text)]">Le règlement a-t-il été reçu ?</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setPaymentStatus('paid')} className={`min-h-11 rounded-2xl text-xs font-black ${paymentStatus === 'paid' ? 'bg-[var(--artisan-green)] text-white' : 'bg-[#F4F6F4] text-[var(--artisan-muted)]'}`}>Oui, payé</button>
+                    <button type="button" onClick={() => setPaymentStatus('unpaid')} className={`min-h-11 rounded-2xl text-xs font-black ${paymentStatus === 'unpaid' ? 'bg-[var(--artisan-gold)] text-[#4B3900]' : 'bg-[#F4F6F4] text-[var(--artisan-muted)]'}`}>Non payé</button>
+                  </div>
+                </div>
+
+                {paymentStatus === 'paid' ? (
+                  <>
+                    <label className="block">
+                      <span className="text-xs font-black text-[var(--artisan-text)]">Méthode de paiement *</span>
+                      <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-[#DDE5E0] bg-white px-3.5 text-sm font-bold outline-none focus:border-[var(--artisan-green)]">
+                        {(paymentInfo.data?.payment_methods ?? [
+                          { value: 'wave', label: 'Wave' },
+                          { value: 'orange_money', label: 'Orange Money' },
+                          { value: 'mtn_money', label: 'MTN Money' },
+                          { value: 'moov_money', label: 'Moov Money' },
+                          { value: 'cash', label: 'Espèces' },
+                          { value: 'bank_transfer', label: 'Virement bancaire' },
+                          { value: 'other', label: 'Autre' }
+                        ]).map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-black text-[var(--artisan-text)]">Référence <span className="font-semibold text-[var(--artisan-muted)]">(facultatif)</span></span>
+                      <input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value.slice(0, 100))} placeholder="Ex. référence Wave / Orange" className="mt-2 min-h-12 w-full rounded-2xl border border-[#DDE5E0] bg-white px-3.5 text-sm font-semibold outline-none focus:border-[var(--artisan-green)]" />
+                    </label>
+                  </>
+                ) : null}
+
+                <label className="block">
+                  <span className="text-xs font-black text-[var(--artisan-text)]">Note <span className="font-semibold text-[var(--artisan-muted)]">(facultatif)</span></span>
+                  <textarea value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value.slice(0, 255))} rows={2} placeholder="Information utile sur le règlement…" className="mt-2 w-full resize-none rounded-2xl border border-[#DDE5E0] bg-white px-3.5 py-3 text-sm outline-none focus:border-[var(--artisan-green)]" />
+                </label>
+              </div>
+            ) : (actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan') ? (
               <label className="mt-4 block">
                 <span className="text-xs font-black text-[var(--artisan-text)]">Motif</span>
                 <textarea
@@ -488,11 +578,19 @@ export function ArtisanAgendaPage() {
             >
             <button
               type="button"
-              disabled={transitionMutation.isPending}
+              disabled={transitionMutation.isPending || completeServiceMutation.isPending || (actionTarget.statut === 'termine' && paymentInfo.isPending)}
               onClick={() => {
                 if (!actionTarget) return;
                 if ((actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan') && !actionNote.trim()) {
                   setActionError('Indiquez un motif avant de continuer.');
+                  return;
+                }
+                if (actionTarget.statut === 'termine') {
+                  if (paymentStatus === 'paid' && !paymentMethod) {
+                    setActionError('Choisissez une méthode de paiement.');
+                    return;
+                  }
+                  completeServiceMutation.mutate({ id: actionTarget.appointment.id });
                   return;
                 }
                 transitionMutation.mutate({ id: actionTarget.appointment.id, statut: actionTarget.statut, motif: actionNote.trim() });
@@ -506,7 +604,7 @@ export function ArtisanAgendaPage() {
               }}
             >
               {actionTarget.statut === 'en_route' ? <Route size={18} /> : actionTarget.statut === 'refuse' || actionTarget.statut === 'annule_artisan' ? <XCircle size={18} /> : <CheckCircle2 size={18} />}
-              {transitionMutation.isPending ? 'Mise à jour…' : transitionLabels[actionTarget.statut] ?? 'Confirmer'}
+              {transitionMutation.isPending || completeServiceMutation.isPending ? 'Mise à jour…' : actionTarget.statut === 'termine' ? 'Terminer et enregistrer le règlement' : transitionLabels[actionTarget.statut] ?? 'Confirmer'}
             </button>
             </div>
           </div>

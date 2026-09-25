@@ -4,6 +4,8 @@ import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 're
 import L from 'leaflet';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
+import LocationActions from '../../components/LocationActions';
+import { buildNavigationLinks } from '../../utils/location';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -46,6 +48,10 @@ function categorySummary(artisan) {
   if (labels.length === 0) return 'Prestations à découvrir';
   if (labels.length <= 2) return labels.join(' · ');
   return `${labels.slice(0, 2).join(' · ')} +${labels.length - 2}`;
+}
+
+function artisanInitial(artisan) {
+  return String(artisan?.artisan_nom || 'A').slice(0, 1).toUpperCase();
 }
 
 export default function ArtisansList() {
@@ -266,18 +272,103 @@ export default function ArtisansList() {
             )}
             {mapPoints.map((artisan) => (
               <Marker key={artisan.id} position={[Number(artisan.latitude), Number(artisan.longitude)]}>
-                <Popup>
-                  <div className="min-w-[190px]">
-                    <strong>{artisan.artisan_nom}</strong>
-                    {artisan.artisan_verified ? <span> · ✓ Vérifié</span> : null}
-                    <br />
-                    <span>{categorySummary(artisan)}</span>
-                    <br />
-                    <span>{artisan.localisation || 'Localisation non précisée'}</span>
-                    {artisan.distance_km != null ? <><br /><span>À {Number(artisan.distance_km).toFixed(1)} km</span></> : null}
-                    <br />
-                    <Link to={`/artisans/${artisan.artisan_nom}`}>Voir le profil</Link>
-                  </div>
+                <Popup minWidth={250} maxWidth={270} className="artisan-map-popup">
+                  {(() => {
+                    const navigation = buildNavigationLinks(
+                      artisan.latitude,
+                      artisan.longitude,
+                      artisan.artisan_nom || 'Artisan ARTISAN_CI',
+                    );
+                    return (
+                      <div className="w-[254px] overflow-hidden bg-white text-[#1E2A24]">
+                        <div className="relative h-16 overflow-hidden bg-gradient-to-br from-[#DCEDE6] via-[#F4F7F5] to-[#FFF1E4]">
+                          {artisan.photo_couverture ? (
+                            <img src={artisan.photo_couverture} alt="" className="h-full w-full object-cover" />
+                          ) : null}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+                          {artisan.distance_km != null ? (
+                            <span className="absolute right-2.5 top-2.5 rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-[#0B6B50] shadow-sm">
+                              {Number(artisan.distance_km).toFixed(1)} km
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="relative px-3.5 pb-3.5 pt-6">
+                          <span className="absolute -top-5 left-3.5 grid h-10 w-10 place-items-center rounded-xl border-[3px] border-white bg-[#0B6B50] text-sm font-black text-white shadow-md">
+                            {artisanInitial(artisan)}
+                          </span>
+
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <h3 className="min-w-0 flex-1 truncate text-[15px] font-black text-[#111815]">{artisan.artisan_nom}</h3>
+                              {artisan.artisan_verified ? (
+                                <span className="shrink-0 rounded-full bg-[#EAF4F0] px-1.5 py-0.5 text-[9px] font-black text-[#0B6B50]">✓ Vérifié</span>
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 min-h-[28px] line-clamp-2 text-[10px] font-black uppercase leading-4 tracking-[0.06em] text-[#0B6B50]">
+                              {categorySummary(artisan)}
+                            </p>
+                          </div>
+
+                          <div className="mt-2.5 space-y-1.5 text-[12px] text-[#5F6D65]">
+                            <p className="flex min-w-0 items-start gap-1.5">
+                              <AppIcon name="pin" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0B6B50]" />
+                              <span className="line-clamp-2 leading-4">{artisan.localisation || 'Localisation non précisée'}</span>
+                            </p>
+                            {artisan.service_titles?.length > 0 ? (
+                              <p className="flex min-w-0 items-start gap-1.5">
+                                <AppIcon name="tools" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0B6B50]" />
+                                <span className="line-clamp-2 leading-4">{artisan.service_titles.slice(0, 2).join(' · ')}</span>
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            <Link
+                              to={`/artisans/${artisan.artisan_nom}`}
+                              className="flex h-10 items-center justify-center rounded-xl bg-[#0B6B50] px-2 text-center text-[11px] font-black tracking-[0.01em] text-white shadow-sm"
+                              style={{ color: '#FFFFFF' }}
+                            >
+                              Profil
+                            </Link>
+                            <Link
+                              to={`/client/messagerie/${artisan.artisan_nom}`}
+                              className="flex h-10 items-center justify-center rounded-xl bg-[#F2F5F3] px-2 text-center text-[11px] font-black text-[#334139]"
+                              aria-label={`Écrire à ${artisan.artisan_nom}`}
+                            >
+                              Message
+                            </Link>
+                            {navigation ? (
+                              <a
+                                href={navigation.google}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex h-10 items-center justify-center rounded-xl border border-[#DDE5E0] bg-white px-2 text-center text-[11px] font-black text-[#0B6B50]"
+                              >
+                                Itinéraire
+                              </a>
+                            ) : <span />}
+                          </div>
+
+                          {navigation ? (
+                            <details className="mt-2 border-t border-black/5 pt-2">
+                              <summary className="cursor-pointer list-none text-center text-[10px] font-bold text-[#718078] hover:text-[#0B6B50]">
+                                Autres GPS
+                              </summary>
+                              <div className="mt-2">
+                                <LocationActions
+                                  latitude={artisan.latitude}
+                                  longitude={artisan.longitude}
+                                  label={artisan.artisan_nom || 'Artisan ARTISAN_CI'}
+                                  compact
+                                />
+                              </div>
+                            </details>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </Popup>
               </Marker>
             ))}
@@ -327,6 +418,19 @@ export default function ArtisansList() {
                       <Link to={`/artisans/${artisan.artisan_nom}`} className="flex-1 rounded-xl bg-[#0B6B50] px-4 py-2.5 text-center text-sm font-black text-white">Voir le profil</Link>
                       <Link to={`/client/messagerie/${artisan.artisan_nom}`} className="grid h-10 w-11 place-items-center rounded-xl bg-[#F2F5F3] text-[#526159]" aria-label={`Écrire à ${artisan.artisan_nom}`}><AppIcon name="chat" className="h-5 w-5" /></Link>
                     </div>
+                    {artisan.latitude != null && artisan.longitude != null && (
+                      <div className="mt-4 border-t border-black/5 pt-4">
+                        <p className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.08em] text-[#66736D]">
+                          <AppIcon name="pin" className="h-3.5 w-3.5" /> Itinéraire vers l’artisan
+                        </p>
+                        <LocationActions
+                          latitude={artisan.latitude}
+                          longitude={artisan.longitude}
+                          label={artisan.artisan_nom || 'Artisan ARTISAN_CI'}
+                          compact
+                        />
+                      </div>
+                    )}
                   </div>
                 </article>
               ))}

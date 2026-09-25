@@ -16,6 +16,16 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const registered = searchParams.get('registered') === '1';
+  const reset = searchParams.get('reset') === '1';
+  const [sessionExpired] = useState(() => {
+    try {
+      const expired = window.sessionStorage.getItem('artisan_session_expired') === '1';
+      if (expired) window.sessionStorage.removeItem('artisan_session_expired');
+      return expired;
+    } catch {
+      return false;
+    }
+  });
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -113,9 +123,15 @@ export function LoginPage() {
               </label>
             </div>
 
-            {registered && !error ? (
+            {(registered || reset) && !error ? (
               <div role="status" className="mt-3 rounded-2xl border border-[#0B6B50]/15 bg-[var(--artisan-green-soft)] px-4 py-3 text-sm font-semibold text-[var(--artisan-green)]">
-                Compte créé avec succès. Vous pouvez maintenant vous connecter.
+                {registered ? 'Compte créé avec succès. Vous pouvez maintenant vous connecter.' : 'Mot de passe mis à jour. Connectez-vous avec votre nouveau mot de passe.'}
+              </div>
+            ) : null}
+
+            {sessionExpired && !error ? (
+              <div role="status" className="mt-3 rounded-2xl border border-[var(--artisan-gold)]/20 bg-[var(--artisan-gold-soft)] px-4 py-3 text-sm font-semibold text-[#7B5A00]">
+                Votre session a expiré. Reconnectez-vous pour continuer.
               </div>
             ) : null}
 
@@ -124,6 +140,10 @@ export function LoginPage() {
                 {error}
               </div>
             ) : null}
+
+            <div className="mt-3 text-right">
+              <Link to="/mot-de-passe-oublie" className="text-xs font-black text-[var(--artisan-green)]">Mot de passe oublié ?</Link>
+            </div>
 
             <button
               type="submit"

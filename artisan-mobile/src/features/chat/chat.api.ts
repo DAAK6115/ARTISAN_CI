@@ -34,6 +34,22 @@ export interface ChatMessage {
   location_lng: string | null;
 }
 
+export interface ChatAccess {
+  allowed: boolean;
+  blocked: boolean;
+  blocked_by_me: boolean;
+}
+
+export interface SendMessageInput {
+  receiver: number;
+  content?: string;
+  media?: File | null;
+  audio?: File | null;
+  reply_to?: number | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
+}
+
 export function getChatContacts(): Promise<ChatContact[]> {
   return apiRequest<ChatContact[]>('/chat/messages/contacts/');
 }
@@ -46,9 +62,51 @@ export function markConversationRead(contactId: number): Promise<{ read: number 
   return apiRequest<{ read: number }>(`/chat/messages/${contactId}/read/`, { method: 'POST' });
 }
 
-export function sendMessage(receiver: number, content: string): Promise<ChatMessage> {
+export function sendMessage(input: SendMessageInput): Promise<ChatMessage> {
+  const hasFile = Boolean(input.media || input.audio);
+  if (hasFile) {
+    const body = new FormData();
+    body.append('receiver', String(input.receiver));
+    if (input.content?.trim()) body.append('content', input.content.trim());
+    if (input.media) body.append('media', input.media);
+    if (input.audio) body.append('audio', input.audio);
+    if (input.reply_to) body.append('reply_to', String(input.reply_to));
+    if (input.location_lat != null) body.append('location_lat', String(input.location_lat));
+    if (input.location_lng != null) body.append('location_lng', String(input.location_lng));
+    return apiRequest<ChatMessage>('/chat/messages/send/', { method: 'POST', body });
+  }
+
   return apiRequest<ChatMessage>('/chat/messages/send/', {
     method: 'POST',
-    body: { receiver, content }
+    body: {
+      receiver: input.receiver,
+      content: input.content?.trim() ?? '',
+      reply_to: input.reply_to ?? undefined,
+      location_lat: input.location_lat ?? undefined,
+      location_lng: input.location_lng ?? undefined
+    }
   });
+}
+
+export function updateMessage(id: number, content: string): Promise<ChatMessage> {
+  return apiRequest<ChatMessage>(`/chat/messages/${id}/update/`, {
+    method: 'PATCH',
+    body: { content: content.trim() }
+  });
+}
+
+export function deleteMessage(id: number): Promise<{ detail: string }> {
+  return apiRequest<{ detail: string }>(`/chat/messages/${id}/delete/`, { method: 'DELETE' });
+}
+
+export function toggleChatBlock(userId: number): Promise<{ blocked: boolean }> {
+  return apiRequest<{ blocked: boolean }>(`/chat/blocks/${userId}/toggle/`, { method: 'POST' });
+}
+
+export function getChatAccess(userId: number): Promise<ChatAccess> {
+  return apiRequest<ChatAccess>(`/chat/access/${userId}/`);
+}
+
+export function getWebSocketTicket(): Promise<{ ticket: string }> {
+  return apiRequest<{ ticket: string }>('/chat/ws-ticket/', { method: 'POST' });
 }

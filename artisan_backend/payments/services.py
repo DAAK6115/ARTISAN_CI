@@ -17,15 +17,30 @@ def accepted_quote_for(appointment):
 
 
 def contract_total_for(appointment):
+    """Retourne le montant contractuel à utiliser pour le règlement.
+
+    - Prix fixe : prix de la prestation.
+    - À partir de : un devis accepté est prioritaire ; sinon le prix affiché
+      devient le montant minimum convenu. L'artisan ne peut donc pas facturer
+      silencieusement plus sans devis accepté.
+    - Sur devis : un devis accepté reste obligatoire.
+    """
     quote = accepted_quote_for(appointment)
-    if appointment.service.mode_tarification in {'sur_devis', 'a_partir_de'} and not quote:
+    if quote:
+        total = quote.total
+        if total is None or Decimal(total) <= 0:
+            raise ValidationError('Le montant du devis accepté est invalide.')
+        return Decimal(total), quote
+
+    if appointment.service.mode_tarification == 'sur_devis':
         raise ValidationError(
             'Un devis accepté est requis pour déterminer le montant final de cette prestation.'
         )
-    total = quote.total if quote else appointment.service.prix
+
+    total = appointment.service.prix
     if total is None or Decimal(total) <= 0:
         raise ValidationError('Le montant de la prestation est invalide.')
-    return Decimal(total), quote
+    return Decimal(total), None
 
 
 def current_payment_for(appointment):
@@ -45,12 +60,18 @@ def payment_workspace_for(artisan):
 
     rows = []
     for appointment in appointments:
+        payment = current_payment_for(appointment)
         try:
             total, quote = contract_total_for(appointment)
         except ValidationError:
             total, quote = None, None
 
-        payment = current_payment_for(appointment)
+        # Si un règlement a déjà été déclaré, son montant figé est la source
+        # de vérité même si la prestation/devis est modifié plus tard.
+        if payment is not None:
+            total = payment.montant
+            quote = payment.quote
+
         rows.append(
             {
                 'appointment_id': appointment.id,

@@ -49,9 +49,9 @@ function buildQuery(params: ServiceSearchParams = {}): string {
 }
 
 export function getServices(params: ServiceSearchParams = {}): Promise<ServiceItem[]> {
-  return apiRequest<ServiceItem[]>(`/services/${buildQuery(params)}`, { auth: false });
+  return apiRequest<ServiceItem[]>(`/services/${buildQuery(params)}`);
 }
 
 export function getService(id: number): Promise<ServiceItem> {
-  return apiRequest<ServiceItem>(`/services/${id}/`, { auth: false });
+  return apiRequest<ServiceItem>(`/services/${id}/`);
 }

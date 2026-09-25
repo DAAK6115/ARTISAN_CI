@@ -1,16 +1,17 @@
+import { useQuery } from '@tanstack/react-query';
 import {
   Award,
   Bell,
   FileText,
   Heart,
   Images,
+  MapPinned,
   Menu,
   MessageCircle,
   ReceiptText,
   ShieldQuestion,
   Star,
   UserRound,
-  UsersRound,
   WalletCards,
   X
 } from 'lucide-react';
@@ -18,9 +19,10 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
 import { useAuthStore } from '../features/auth/auth.store';
+import { getNotifications } from '../features/client/client.api';
 
 const clientSecondary = [
-  { to: '/client/artisans', label: 'Artisans', Icon: UsersRound },
+  { to: '/client/artisans', label: 'Près de moi', Icon: MapPinned },
   { to: '/client/favoris', label: 'Favoris', Icon: Heart },
   { to: '/client/devis', label: 'Devis', Icon: FileText },
   { to: '/client/paiements', label: 'Paiements', Icon: ReceiptText },
@@ -46,6 +48,8 @@ export function MobileTopBar({ showNotification = true }: MobileTopBarProps) {
   const role = useAuthStore((state) => state.user?.role);
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const notifications = useQuery({ queryKey: ['notifications'], queryFn: getNotifications, refetchInterval: 30_000, staleTime: 15_000 });
+  const unreadCount = (notifications.data ?? []).filter((item) => !item.lu).length;
 
   useEffect(() => setOpen(false), [location.pathname]);
 
@@ -71,6 +75,7 @@ export function MobileTopBar({ showNotification = true }: MobileTopBarProps) {
                 aria-label="Notifications"
               >
                 <Bell size={19} />
+                {unreadCount > 0 ? <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[var(--artisan-danger)] px-1 text-center text-[9px] font-black leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span> : null}
               </Link>
             ) : null}
             <button

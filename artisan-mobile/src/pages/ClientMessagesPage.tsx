@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MobileTopBar } from '../components/MobileTopBar';
 import { getChatContacts } from '../features/chat/chat.api';
+import { useRealtime } from '../features/chat/RealtimeProvider';
 
 function timeLabel(value: string | null) {
   if (!value) return '';
@@ -17,7 +18,8 @@ function timeLabel(value: string | null) {
 
 export function ClientMessagesPage() {
   const [search, setSearch] = useState('');
-  const contacts = useQuery({ queryKey: ['chat', 'contacts'], queryFn: getChatContacts, refetchInterval: 15000 });
+  const { connected } = useRealtime();
+  const contacts = useQuery({ queryKey: ['chat', 'contacts'], queryFn: getChatContacts, refetchInterval: connected ? false : 15000 });
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return contacts.data ?? [];

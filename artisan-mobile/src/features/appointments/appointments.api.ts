@@ -67,3 +67,7 @@ export function updateAppointmentStatus(appointmentId: number, statut: string, m
     body: { statut, motif }
   });
 }
+
+export function confirmAppointment(appointmentId: number): Promise<AppointmentItem> {
+  return apiRequest<AppointmentItem>(`/appointments/confirmer/${appointmentId}/`, { method: 'POST' });
+}

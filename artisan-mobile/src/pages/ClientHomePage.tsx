@@ -54,8 +54,8 @@ export function ClientHomePage() {
           <ChevronRight size={18} className="shrink-0 text-[#9AA59F]" />
         </button>
 
-        <button type="button" className="mt-3 flex items-center gap-2 text-sm font-bold text-[var(--artisan-green)]">
-          <MapPin size={17} /> Abidjan <ChevronRight size={15} />
+        <button type="button" onClick={() => navigate('/client/artisans')} className="mt-3 flex items-center gap-2 text-sm font-bold text-[var(--artisan-green)]">
+          <MapPin size={17} /> Artisans autour de moi <ChevronRight size={15} />
         </button>
       </section>
 

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Clock3, MapPin, XCircle } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, MapPin, Star, XCircle } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { MobileTopBar } from '../components/MobileTopBar';
-import { getMyAppointments, updateAppointmentStatus, type AppointmentItem } from '../features/appointments/appointments.api';
+import { confirmAppointment, getMyAppointments, updateAppointmentStatus, type AppointmentItem } from '../features/appointments/appointments.api';
 
 const statusStyles: Record<string, string> = {
   en_attente: 'bg-[#FFF7DD] text-[#8A6500]',
@@ -25,9 +26,9 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat('fr-CI', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }
 
-function AppointmentCard({ item, onCancel, cancelling }: { item: AppointmentItem; onCancel: () => void; cancelling: boolean }) {
+function AppointmentCard({ item, onCancel, cancelling, onConfirm, confirming, highlighted = false }: { item: AppointmentItem; onCancel: () => void; cancelling: boolean; onConfirm: () => void; confirming: boolean; highlighted?: boolean }) {
   return (
-    <article className="rounded-3xl border border-black/5 bg-white p-4 shadow-[var(--artisan-shadow-card)]">
+    <article className={`rounded-3xl border bg-white p-4 shadow-[var(--artisan-shadow-card)] ${highlighted ? 'border-[var(--artisan-green)]/40 ring-2 ring-[var(--artisan-green)]/10' : 'border-black/5'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-base font-black text-[var(--artisan-ink)]">{item.service_titre}</p>
@@ -49,12 +50,26 @@ function AppointmentCard({ item, onCancel, cancelling }: { item: AppointmentItem
           <XCircle size={16} /> {cancelling ? 'Annulation…' : 'Annuler ce rendez-vous'}
         </button>
       ) : null}
+
+      {item.statut === 'termine' && item.transitions_autorisees.includes('effectue') ? (
+        <button type="button" onClick={onConfirm} disabled={confirming} className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--artisan-green)] px-4 text-xs font-black text-white disabled:opacity-50">
+          <CheckCircle2 size={16} /> {confirming ? 'Confirmation…' : 'Confirmer que la prestation est terminée'}
+        </button>
+      ) : null}
+
+      {item.statut === 'effectue' ? (
+        <Link to={`/client/avis?rdv=${item.id}`} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--artisan-gold-soft)] px-4 text-xs font-black text-[#8A6500]">
+          <Star size={16} fill="currentColor" /> Donner mon avis
+        </Link>
+      ) : null}
     </article>
   );
 }
 
 export function ClientAppointmentsPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const highlightedId = Number(searchParams.get('rdv') || 0);
   const appointments = useQuery({ queryKey: ['appointments', 'client'], queryFn: getMyAppointments });
   const cancel = useMutation({
     mutationFn: (id: number) => updateAppointmentStatus(id, 'annule_client', 'Annulation demandée depuis l’application mobile'),
@@ -63,13 +78,25 @@ export function ClientAppointmentsPage() {
     }
   });
 
+  const confirm = useMutation({
+    mutationFn: confirmAppointment,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['appointments', 'client'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      ]);
+    }
+  });
+
   function requestCancel(item: AppointmentItem) {
     if (!window.confirm('Voulez-vous vraiment annuler ce rendez-vous ?')) return;
     cancel.mutate(item.id);
   }
 
-  const active = appointments.data?.filter((item) => !['effectue', 'refuse', 'annule_client', 'annule_artisan', 'annule'].includes(item.statut)) ?? [];
-  const history = appointments.data?.filter((item) => ['effectue', 'refuse', 'annule_client', 'annule_artisan', 'annule'].includes(item.statut)) ?? [];
+  const active = (appointments.data?.filter((item) => !['effectue', 'refuse', 'annule_client', 'annule_artisan', 'annule'].includes(item.statut)) ?? [])
+    .sort((a, b) => Number(b.id === highlightedId) - Number(a.id === highlightedId));
+  const history = (appointments.data?.filter((item) => ['effectue', 'refuse', 'annule_client', 'annule_artisan', 'annule'].includes(item.statut)) ?? [])
+    .sort((a, b) => Number(b.id === highlightedId) - Number(a.id === highlightedId));
 
   return (
     <div>
@@ -80,7 +107,7 @@ export function ClientAppointmentsPage() {
         <p className="mt-2 text-sm leading-6 text-[var(--artisan-muted)]">Suivez vos demandes et l’avancement de vos prestations.</p>
       </section>
 
-      {cancel.isError ? <div className="mt-4 rounded-2xl bg-[var(--artisan-danger-soft)] px-4 py-3 text-sm font-semibold text-[#A83228]">{cancel.error instanceof Error ? cancel.error.message : 'Impossible d’annuler ce rendez-vous.'}</div> : null}
+      {cancel.isError || confirm.isError ? <div className="mt-4 rounded-2xl bg-[var(--artisan-danger-soft)] px-4 py-3 text-sm font-semibold text-[#A83228]">{cancel.isError ? (cancel.error instanceof Error ? cancel.error.message : 'Impossible d’annuler ce rendez-vous.') : (confirm.error instanceof Error ? confirm.error.message : 'Impossible de confirmer la prestation.')}</div> : null}
 
       <section className="mt-6">
         <div className="flex items-center justify-between gap-3">
@@ -89,7 +116,7 @@ export function ClientAppointmentsPage() {
         </div>
         <div className="mt-3 space-y-3">
           {appointments.isPending ? [1,2].map((id) => <div key={id} className="h-40 animate-pulse rounded-3xl bg-white" />) : null}
-          {active.map((item) => <AppointmentCard key={item.id} item={item} onCancel={() => requestCancel(item)} cancelling={cancel.isPending && cancel.variables === item.id} />)}
+          {active.map((item) => <AppointmentCard key={item.id} item={item} onCancel={() => requestCancel(item)} cancelling={cancel.isPending && cancel.variables === item.id} onConfirm={() => confirm.mutate(item.id)} confirming={confirm.isPending && confirm.variables === item.id} highlighted={item.id === highlightedId} />)}
           {!appointments.isPending && active.length === 0 ? (
             <div className="rounded-3xl border border-black/5 bg-white p-6 text-center shadow-sm">
               <CalendarDays size={24} className="mx-auto text-[var(--artisan-green)]" />
@@ -106,7 +133,7 @@ export function ClientAppointmentsPage() {
           <span className="text-xs font-bold text-[var(--artisan-muted)]">{history.length}</span>
         </div>
         <div className="mt-3 space-y-3">
-          {history.map((item) => <AppointmentCard key={item.id} item={item} onCancel={() => undefined} cancelling={false} />)}
+          {history.map((item) => <AppointmentCard key={item.id} item={item} onCancel={() => undefined} cancelling={false} onConfirm={() => confirm.mutate(item.id)} confirming={confirm.isPending && confirm.variables === item.id} highlighted={item.id === highlightedId} />)}
           {!appointments.isPending && history.length === 0 ? <p className="rounded-3xl bg-white p-5 text-sm text-[var(--artisan-muted)]">Aucun rendez-vous terminé ou annulé.</p> : null}
         </div>
       </section>

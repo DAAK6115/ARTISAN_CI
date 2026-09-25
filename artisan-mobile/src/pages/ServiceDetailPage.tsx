@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays,
   Clock3,
+  Heart,
   MapPin,
   MessageCircle,
   ShieldCheck,
@@ -12,6 +13,7 @@ import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { formatMoney, servicePriceLabel } from '../components/ServiceCard';
 import { getService } from '../features/home/services.api';
+import { toggleFavorite } from '../features/client/client.api';
 import { getServiceReviews } from '../features/reviews/reviews.api';
 
 function formatDate(value: string) {
@@ -23,6 +25,7 @@ function formatDate(value: string) {
 }
 
 export function ServiceDetailPage() {
+  const queryClient = useQueryClient();
   const rawId = useParams().id ?? '';
   const serviceId = Number(rawId);
   const validId = Number.isInteger(serviceId) && serviceId > 0;
@@ -36,6 +39,15 @@ export function ServiceDetailPage() {
     queryKey: ['service-reviews', serviceId],
     queryFn: () => getServiceReviews(serviceId),
     enabled: validId
+  });
+  const favorite = useMutation({
+    mutationFn: () => toggleFavorite(serviceId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['service', serviceId] }),
+        queryClient.invalidateQueries({ queryKey: ['client-favorites'] })
+      ]);
+    }
   });
 
   if (!validId) {
@@ -160,7 +172,10 @@ export function ServiceDetailPage() {
       </section>
 
       <div className="sticky bottom-[88px] z-20 mt-6 rounded-[24px] border border-black/5 bg-white/95 p-2 shadow-[0_16px_40px_rgba(20,38,30,0.16)] backdrop-blur-xl">
-        <div className="grid grid-cols-[auto_1fr] gap-2">
+        <div className="grid grid-cols-[auto_auto_1fr] gap-2">
+          <button type="button" onClick={() => favorite.mutate()} disabled={favorite.isPending} className={`grid size-13 place-items-center rounded-2xl ${item.is_favori ? 'bg-[var(--artisan-danger-soft)] text-[var(--artisan-danger)]' : 'bg-[#F4F6F4] text-[#45534C]'}`} aria-label={item.is_favori ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
+            <Heart size={20} fill={item.is_favori ? 'currentColor' : 'none'} />
+          </button>
           <Link to={`/client/artisans/${encodeURIComponent(item.artisan_username)}`} className="grid size-13 place-items-center rounded-2xl bg-[#F4F6F4] text-[#45534C]" aria-label="Voir l’artisan">
             <MessageCircle size={20} />
           </Link>

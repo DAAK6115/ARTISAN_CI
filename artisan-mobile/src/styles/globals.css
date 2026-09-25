@@ -1,3 +1,4 @@
+@import "leaflet/dist/leaflet.css";
 @import "tailwindcss";
 
 :root {
@@ -71,4 +72,14 @@ img { max-width: 100%; }
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+
+.leaflet-container {
+  font-family: inherit;
+  background: var(--artisan-green-soft);
+  z-index: 0;
+}
+.leaflet-control-attribution {
+  font-size: 9px !important;
 }

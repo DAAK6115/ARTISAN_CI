@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icons/icon.svg', 'branding/logo-artisan-ci.png'],
       manifest: {
         name: 'ARTISAN_CI',

@@ -110,6 +110,11 @@ export async function apiRequest<T>(
         retryOnUnauthorized: false
       });
     }
+    try {
+      window.sessionStorage.setItem('artisan_session_expired', '1');
+    } catch {
+      // Le flag n'est qu'un confort UX ; l'authentification ne dépend pas du stockage web.
+    }
     authSnapshot().setAnonymous();
   }
 
