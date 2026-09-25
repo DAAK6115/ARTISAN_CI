@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 export default function AdminModerationPage() {
   const [tab, setTab] = useState('reports'); const [reports, setReports] = useState([]); const [disputes, setDisputes] = useState([]); const [message, setMessage] = useState('');
   const load = async () => { try { const [r,d] = await Promise.all([axios.get('/moderation/admin/reports/'), axios.get('/moderation/admin/disputes/')]); setReports(r.data||[]); setDisputes(d.data||[]); } catch { setMessage('Impossible de charger la modération.'); } };
   useEffect(() => { load(); }, []);
+  useAutoRefresh(load, { intervalMs: 20000 });
   const updateReport = async (item, status) => { const resolution_note = window.prompt('Note de résolution (facultative)', '') || ''; try { await axios.patch(`/moderation/admin/reports/${item.id}/`, { status, resolution_note }); await load(); } catch { setMessage('Action impossible.'); } };
   const replyDispute = async (item) => { const body = window.prompt('Message visible par les parties', '') || ''; if (!body) return; try { await axios.post(`/moderation/disputes/${item.id}/messages/`, { body }); await load(); } catch { setMessage('Impossible d’ajouter le message.'); } };
   const updateDispute = async (item, status) => { const admin_resolution = window.prompt('Décision / note administrative', item.admin_resolution || '') || ''; try { await axios.patch(`/moderation/admin/disputes/${item.id}/`, { status, admin_resolution }); await load(); } catch { setMessage('Action impossible.'); } };

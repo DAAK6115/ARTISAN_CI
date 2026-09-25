@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const statusLabels = {
   en_attente: 'Demande envoyée',
@@ -43,40 +44,36 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      setLoading(true);
-      setError('');
-      const requests = [
-        axios.get('/accounts/profile/me/'),
-        axios.get('/appointments/mes/'),
-        axios.get('/payments/mes/'),
-        axios.get('/notifications/'),
-        axios.get('/favoris/mes/'),
-        axios.get('/payments/quotes/client/'),
-      ];
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError('');
+    const requests = [
+      axios.get('/accounts/profile/me/'),
+      axios.get('/appointments/mes/'),
+      axios.get('/payments/mes/'),
+      axios.get('/notifications/'),
+      axios.get('/favoris/mes/'),
+      axios.get('/payments/quotes/client/'),
+    ];
 
-      const [profile, appointments, payments, notifications, favorites, quotes] = await Promise.allSettled(requests);
-      if (!mounted) return;
+    const [profile, appointments, payments, notifications, favorites, quotes] = await Promise.allSettled(requests);
+    setData({
+      profile: profile.status === 'fulfilled' ? profile.value.data : null,
+      appointments: appointments.status === 'fulfilled' ? appointments.value.data : [],
+      payments: payments.status === 'fulfilled' ? payments.value.data : [],
+      notifications: notifications.status === 'fulfilled' ? notifications.value.data : [],
+      favorites: favorites.status === 'fulfilled' ? favorites.value.data : [],
+      quotes: quotes.status === 'fulfilled' ? quotes.value.data : [],
+    });
 
-      setData({
-        profile: profile.status === 'fulfilled' ? profile.value.data : null,
-        appointments: appointments.status === 'fulfilled' ? appointments.value.data : [],
-        payments: payments.status === 'fulfilled' ? payments.value.data : [],
-        notifications: notifications.status === 'fulfilled' ? notifications.value.data : [],
-        favorites: favorites.status === 'fulfilled' ? favorites.value.data : [],
-        quotes: quotes.status === 'fulfilled' ? quotes.value.data : [],
-      });
+    if ([profile, appointments].some((result) => result.status === 'rejected')) {
+      setError('Certaines informations n’ont pas pu être synchronisées pour le moment.');
+    }
+    if (!silent) setLoading(false);
+  };
 
-      if ([profile, appointments].some((result) => result.status === 'rejected')) {
-        setError('Certaines informations n’ont pas pu être chargées. Vous pouvez réessayer en actualisant la page.');
-      }
-      setLoading(false);
-    };
-    load();
-    return () => { mounted = false; };
-  }, []);
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 15000 });
 
   const activeAppointments = useMemo(() => data.appointments.filter((item) => !['termine', 'cloture', 'annule', 'refuse'].includes(item.statut)), [data.appointments]);
   const upcoming = useMemo(() => [...activeAppointments]

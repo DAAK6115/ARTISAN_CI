@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const money = (value) => `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`;
 
 export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  useEffect(() => { axios.get('/moderation/admin/dashboard/').then((r) => setData(r.data)).catch(() => setError('Impossible de charger le tableau de bord administrateur.')); }, []);
+  const load = async () => {
+    try {
+      const response = await axios.get('/moderation/admin/dashboard/');
+      setData(response.data);
+      setError('');
+    } catch {
+      setError('Impossible de charger le tableau de bord administrateur.');
+    }
+  };
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(load, { intervalMs: 20000 });
   if (error) return <div className="p-6 text-red-700">{error}</div>;
   if (!data) return <div className="p-6">Chargement…</div>;
   const s = data.summary || {};

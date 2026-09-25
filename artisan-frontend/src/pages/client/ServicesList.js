@@ -6,6 +6,7 @@ import PublicHeader from '../../components/PublicHeader';
 import { getUserRole, isAuthenticated } from '../../utils/auth';
 import { startSpeechRecognition } from '../../utils/speech';
 import { useDataSaver } from '../../utils/accessibility';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const categories = [
   ['alimentation', 'Alimentation'], ['artisanat_d_art', 'Artisanat d’Art'], ['btp', 'Bâtiment & travaux'],
@@ -50,16 +51,21 @@ export default function ServicesList({ publicMode = false }) {
     return params;
   }, [searchParams]);
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    setMessage('');
-    axios.get('/services/', { params: paramsObject })
-      .then((response) => mounted && setServices(response.data || []))
-      .catch(() => mounted && setMessage('Impossible de charger les prestations pour le moment.'))
-      .finally(() => mounted && setLoading(false));
-    return () => { mounted = false; };
-  }, [paramsObject]);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await axios.get('/services/', { params: paramsObject });
+      setServices(response.data || []);
+      setMessage('');
+    } catch {
+      if (!silent) setMessage('Impossible de charger les prestations pour le moment.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [paramsObject]);
+  useAutoRefresh(() => load(true), { intervalMs: 30000 });
 
   const applyFilters = (event) => {
     event.preventDefault();

@@ -4,6 +4,7 @@ import axios from '../utils/axiosInstance';
 import AppIcon from './AppIcon';
 import LogoutButton from './LogoutButton';
 import BrandLogo from './BrandLogo';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 
 const primary = [
   ['/client/dashboard', 'home', 'Accueil'],
@@ -35,15 +36,17 @@ export default function ClientNavbar() {
     setMenuOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    let mounted = true;
-    axios.get('/notifications/')
-      .then((response) => {
-        if (mounted) setUnreadCount((response.data || []).filter((item) => !item.lu).length);
-      })
-      .catch(() => mounted && setUnreadCount(0));
-    return () => { mounted = false; };
-  }, [location.pathname]);
+  const loadUnread = async () => {
+    try {
+      const response = await axios.get('/notifications/');
+      setUnreadCount((response.data || []).filter((item) => !item.lu).length);
+    } catch {
+      setUnreadCount(0);
+    }
+  };
+
+  useEffect(() => { loadUnread(); }, [location.pathname]);
+  useAutoRefresh(loadUnread, { intervalMs: 15000 });
 
   const NavLink = ({ item, compact = false }) => {
     const [path, icon, label] = item;

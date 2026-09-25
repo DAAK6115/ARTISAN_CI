@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const STATUS_LABELS = {
   en_attente: 'Demandes reçues',
@@ -55,14 +56,21 @@ export default function ArtisanDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    axios.get('/appointments/artisan-dashboard/')
-      .then((response) => active && setData(response.data))
-      .catch(() => active && setError('Impossible de charger votre tableau de bord pour le moment.'))
-      .finally(() => active && setLoading(false));
-    return () => { active = false; };
-  }, []);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await axios.get('/appointments/artisan-dashboard/');
+      setData(response.data);
+      setError('');
+    } catch {
+      if (!silent) setError('Impossible de charger votre tableau de bord pour le moment.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 15000 });
 
   const maxRevenue = useMemo(() => {
     const values = data?.revenue_series?.map((row) => Number(row.amount || 0)) || [];

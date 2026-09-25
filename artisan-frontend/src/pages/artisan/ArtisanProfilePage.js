@@ -4,6 +4,7 @@ import axios from '../../utils/axiosInstance';
 import ArtisanMap from '../../components/ArtisanMap';
 import LocationActions from '../../components/LocationActions';
 import AppIcon from '../../components/AppIcon';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 export default function ArtisanProfilePage() {
   const [portfolio, setPortfolio] = useState(null);
@@ -14,12 +15,29 @@ export default function ArtisanProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    Promise.all([axios.get('/portfolio/me/'), axios.get('/certifications/mes/'), axios.get('/reviews/artisan/'), axios.get('/accounts/me/')])
-      .then(([p, c, r, a]) => { setPortfolio(p.data); setCertifications(c.data || []); setReviews(r.data || []); setAccount(a.data); })
-      .catch(() => setError('Impossible de charger votre profil professionnel.'))
-      .finally(() => setLoading(false));
-  }, []);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [p, c, r, a] = await Promise.all([
+        axios.get('/portfolio/me/'),
+        axios.get('/certifications/mes/'),
+        axios.get('/reviews/artisan/'),
+        axios.get('/accounts/me/'),
+      ]);
+      setPortfolio(p.data);
+      setCertifications(c.data || []);
+      setReviews(r.data || []);
+      setAccount(a.data);
+      setError('');
+    } catch {
+      if (!silent) setError('Impossible de charger votre profil professionnel.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 30000 });
 
 
   const requestVerification = async () => {
@@ -41,8 +59,15 @@ export default function ArtisanProfilePage() {
     <div className="mx-auto max-w-[1350px] space-y-6 p-4 pb-28 sm:p-6 lg:pb-8">
       <section className="overflow-hidden rounded-[30px] border border-black/5 bg-white shadow-[0_12px_36px_rgba(30,45,37,0.06)]">
         {portfolio.photo_couverture ? <img src={portfolio.photo_couverture} alt="Couverture" className="h-56 w-full object-cover sm:h-72" /> : <div className="h-48 bg-gradient-to-br from-[#DDECE6] to-[#F7E9D8]" />}
-        <div className="p-5 sm:p-7">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Profil professionnel</p><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-3xl font-black">{portfolio.artisan_nom}</h1><span className={`rounded-full px-3 py-1 text-xs font-black ${account?.verification_status === 'verified' ? 'bg-[#EAF4F0] text-[#0B6B50]' : account?.verification_status === 'rejected' ? 'bg-[#FFF0EE] text-[#B23A31]' : 'bg-[#FFF7DD] text-[#745B15]'}`}>{account?.verification_status === 'verified' ? 'Vérifié' : account?.verification_status === 'pending' ? 'En vérification' : account?.verification_status === 'rejected' ? 'Refusé' : 'Non vérifié'}</span></div><p className="mt-2 max-w-2xl text-sm leading-6 text-[#607067]">{portfolio.bio || 'Ajoutez une bio professionnelle pour expliquer clairement votre savoir-faire.'}</p>{portfolio.localisation && <p className="mt-3 text-sm font-bold text-[#435149]">📍 {portfolio.localisation}</p>}</div><Link to="/artisan/profil/edit" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#10271F] px-5 py-3 text-sm font-black text-white"><AppIcon name="user" className="h-4 w-4" /> Modifier</Link></div>
+        <div className="relative p-5 pt-8 sm:p-7 sm:pt-10">
+          <div className="absolute -top-10 left-5 sm:left-7">
+            {portfolio.photo_profil ? (
+              <img src={portfolio.photo_profil} alt={`Photo de ${portfolio.artisan_nom}`} className="h-20 w-20 rounded-[22px] border-4 border-white object-cover shadow-lg" />
+            ) : (
+              <span className="grid h-20 w-20 place-items-center rounded-[22px] border-4 border-white bg-[#0B6B50] text-xl font-black text-white shadow-lg">{String(portfolio.artisan_nom || 'A').slice(0, 1).toUpperCase()}</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-4 pt-8 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Profil professionnel</p><div className="mt-2 flex flex-wrap items-center gap-2"><h1 className="text-3xl font-black">{portfolio.artisan_nom}</h1><span className={`rounded-full px-3 py-1 text-xs font-black ${account?.verification_status === 'verified' ? 'bg-[#EAF4F0] text-[#0B6B50]' : account?.verification_status === 'rejected' ? 'bg-[#FFF0EE] text-[#B23A31]' : 'bg-[#FFF7DD] text-[#745B15]'}`}>{account?.verification_status === 'verified' ? 'Vérifié' : account?.verification_status === 'pending' ? 'En vérification' : account?.verification_status === 'rejected' ? 'Refusé' : 'Non vérifié'}</span></div><p className="mt-2 max-w-2xl text-sm leading-6 text-[#607067]">{portfolio.bio || 'Ajoutez une bio professionnelle pour expliquer clairement votre savoir-faire.'}</p>{portfolio.localisation && <p className="mt-3 text-sm font-bold text-[#435149]">📍 {portfolio.localisation}</p>}</div><Link to="/artisan/profil/edit" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#10271F] px-5 py-3 text-sm font-black text-white"><AppIcon name="user" className="h-4 w-4" /> Modifier</Link></div>
           <div className="mt-6 grid grid-cols-3 gap-3 sm:max-w-xl"><div className="rounded-2xl bg-[#F7F8F6] p-3"><p className="text-xl font-black">{portfolio.realisations?.length || 0}</p><p className="text-xs text-[#718078]">Réalisations</p></div><div className="rounded-2xl bg-[#F7F8F6] p-3"><p className="text-xl font-black">{certifications.length}</p><p className="text-xs text-[#718078]">Certifications</p></div><div className="rounded-2xl bg-[#F7F8F6] p-3"><p className="text-xl font-black">{average || '—'}</p><p className="text-xs text-[#718078]">Note moyenne</p></div></div>
         </div>
       </section>

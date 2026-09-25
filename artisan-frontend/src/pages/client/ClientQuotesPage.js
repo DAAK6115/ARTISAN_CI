@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const STATUS = {
   sent: ['À valider', 'bg-amber-100 text-amber-800'],
@@ -22,19 +23,20 @@ export default function ClientQuotesPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await axios.get('/payments/quotes/client/');
       setQuotes(response.data);
     } catch (error) {
       setMessage(`❌ ${errorMessage(error)}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 15000 });
 
   const decide = async (quote, action) => {
     if (!window.confirm(action === 'accept' ? 'Accepter ce devis ?' : 'Refuser ce devis ?')) return;

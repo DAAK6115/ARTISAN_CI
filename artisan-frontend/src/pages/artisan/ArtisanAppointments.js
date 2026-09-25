@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const WEEKDAYS = [
   [0, 'Lundi'],
@@ -94,14 +95,14 @@ export default function ArtisanAppointments() {
     }
   };
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      await Promise.all([fetchAppointments(), fetchSchedule()]);
-      setLoading(false);
-    };
-    load();
-  }, []);
+  const refreshAll = async (silent = false) => {
+    if (!silent) setLoading(true);
+    await Promise.all([fetchAppointments(), fetchSchedule()]);
+    if (!silent) setLoading(false);
+  };
+
+  useEffect(() => { refreshAll(); }, []);
+  useAutoRefresh(() => refreshAll(true), { intervalMs: 15000 });
 
   const closeCompletionModal = () => {
     if (completionSubmitting) return;

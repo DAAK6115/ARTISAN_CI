@@ -6,6 +6,7 @@ import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import LocationActions from '../../components/LocationActions';
 import { buildNavigationLinks } from '../../utils/location';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -54,6 +55,22 @@ function artisanInitial(artisan) {
   return String(artisan?.artisan_nom || 'A').slice(0, 1).toUpperCase();
 }
 
+function ArtisanAvatar({ artisan, className = '' }) {
+  if (artisan?.photo_profil) {
+    return <img src={artisan.photo_profil} alt={`Photo de ${artisan.artisan_nom}`} className={`object-cover ${className}`} />;
+  }
+  return <span className={`grid place-items-center bg-[#0B6B50] font-black text-white ${className}`}>{artisanInitial(artisan)}</span>;
+}
+
+function RatingBadge({ artisan, compact = false }) {
+  if (!artisan?.review_count) return null;
+  return (
+    <span className={`${compact ? 'text-[10px]' : 'text-xs'} inline-flex items-center gap-1 rounded-full bg-[#FFF7DD] px-2 py-1 font-black text-[#8A6500]`}>
+      ★ {Number(artisan.rating_average || 0).toFixed(1)} · {artisan.review_count} avis
+    </span>
+  );
+}
+
 export default function ArtisansList() {
   const [artisans, setArtisans] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -73,10 +90,11 @@ export default function ArtisansList() {
     currentSearch = search,
     currentCategory = selectedCategory,
     currentScope = scope,
+    silent = false,
   } = {}) => {
     if (currentScope === 'nearby' && !currentPosition) return;
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setMessage('');
     try {
       const params = {
@@ -107,7 +125,7 @@ export default function ArtisansList() {
       setArtisans([]);
       setCategories([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [position, radius, search, selectedCategory, scope]);
 
@@ -152,6 +170,8 @@ export default function ArtisansList() {
     }, search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
   }, [loadArtisans, search, selectedCategory, radius, scope, position]);
+
+  useAutoRefresh(() => loadArtisans({ silent: true }), { intervalMs: 30000 });
 
   const mapPoints = useMemo(
     () => artisans.filter((artisan) => artisan.latitude != null && artisan.longitude != null),
@@ -294,9 +314,7 @@ export default function ArtisansList() {
                         </div>
 
                         <div className="relative px-3.5 pb-3.5 pt-6">
-                          <span className="absolute -top-5 left-3.5 grid h-10 w-10 place-items-center rounded-xl border-[3px] border-white bg-[#0B6B50] text-sm font-black text-white shadow-md">
-                            {artisanInitial(artisan)}
-                          </span>
+                          <ArtisanAvatar artisan={artisan} className="absolute -top-5 left-3.5 h-10 w-10 rounded-xl border-[3px] border-white shadow-md" />
 
                           <div className="min-w-0">
                             <div className="flex min-w-0 items-center gap-1.5">
@@ -308,6 +326,7 @@ export default function ArtisansList() {
                             <p className="mt-0.5 min-h-[28px] line-clamp-2 text-[10px] font-black uppercase leading-4 tracking-[0.06em] text-[#0B6B50]">
                               {categorySummary(artisan)}
                             </p>
+                            <div className="mt-1.5"><RatingBadge artisan={artisan} compact /></div>
                           </div>
 
                           <div className="mt-2.5 space-y-1.5 text-[12px] text-[#5F6D65]">
@@ -397,7 +416,7 @@ export default function ArtisansList() {
                 <article key={artisan.id} className="overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
                   <div className="relative h-36 bg-gradient-to-br from-[#DCEDE6] via-[#F1F5F2] to-[#FFF1E4]">
                     {artisan.photo_couverture && <img src={artisan.photo_couverture} alt="" className="h-full w-full object-cover" />}
-                    <span className="absolute bottom-3 left-4 grid h-14 w-14 place-items-center rounded-2xl border-4 border-white bg-[#0B6B50] text-lg font-black text-white">{String(artisan.artisan_nom || 'A').slice(0, 1).toUpperCase()}</span>
+                    <ArtisanAvatar artisan={artisan} className="absolute bottom-3 left-4 h-14 w-14 rounded-2xl border-4 border-white shadow-sm" />
                   </div>
                   <div className="p-5 pt-6">
                     <div className="flex items-start justify-between gap-3">
@@ -412,6 +431,7 @@ export default function ArtisansList() {
                     </div>
 
                     <p className="mt-3 text-xs font-black uppercase tracking-[0.08em] text-[#0B6B50]">{categorySummary(artisan)}</p>
+                    <div className="mt-2"><RatingBadge artisan={artisan} /></div>
                     {artisan.service_titles?.length > 0 && <p className="mt-2 line-clamp-2 text-xs text-[#829087]">{artisan.service_titles.slice(0, 3).join(' · ')}</p>}
                     <p className="mt-4 line-clamp-3 min-h-[60px] text-sm leading-5 text-[#66736D]">{artisan.bio || 'Cet artisan n’a pas encore renseigné sa présentation.'}</p>
                     <div className="mt-5 flex gap-2">

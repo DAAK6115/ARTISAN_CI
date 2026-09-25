@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const EMPTY_SERVICE = {
   titre: '',
@@ -49,20 +50,21 @@ export default function ArtisanServices() {
   const [editingService, setEditingService] = useState(null);
   const [generatingDescription, setGeneratingDescription] = useState(false);
 
-  const fetchServices = async () => {
+  const fetchServices = async (silent = false) => {
     try {
       const response = await axios.get('/services/mes-prestations/');
       setServices(response.data);
     } catch (error) {
       setMessage(`❌ ${apiErrorMessage(error, 'Impossible de charger les prestations.')}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchServices();
   }, []);
+  useAutoRefresh(() => fetchServices(true), { intervalMs: 20000 });
 
   const generateDescription = async () => {
     if (!newService.titre.trim()) {

@@ -1,7 +1,7 @@
 import logging
 import unicodedata
 
-from django.db.models import Prefetch, Q
+from django.db.models import Avg, Count, Prefetch, Q
 from geopy.distance import geodesic
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsArtisan
 from services.models import Service
+from reviews.models import Review
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
 
@@ -192,6 +193,21 @@ class PortfolioMapView(generics.ListAPIView):
         radius = self._radius() if scope == 'nearby' else None
 
         portfolios = self._with_distances(portfolios, coordinates)
+
+        artisan_ids = [portfolio.artisan_id for portfolio in portfolios]
+        rating_rows = (
+            Review.objects.filter(service__artisan_id__in=artisan_ids)
+            .values('service__artisan_id')
+            .annotate(average=Avg('note'), count=Count('id'))
+        )
+        rating_map = {
+            row['service__artisan_id']: row
+            for row in rating_rows
+        }
+        for portfolio in portfolios:
+            stats = rating_map.get(portfolio.artisan_id, {})
+            portfolio.rating_average_value = stats.get('average')
+            portfolio.review_count_value = stats.get('count', 0)
 
         if scope == 'nearby':
             if coordinates is None:

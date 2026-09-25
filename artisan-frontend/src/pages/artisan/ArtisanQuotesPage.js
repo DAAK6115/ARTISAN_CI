@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const emptyLine = () => ({ description: '', quantity: 1, unit_price: '' });
 
@@ -23,8 +24,8 @@ export default function ArtisanQuotesPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [q, a] = await Promise.all([
         axios.get('/payments/quotes/artisan/'),
@@ -35,11 +36,12 @@ export default function ArtisanQuotesPage() {
     } catch (error) {
       setMessage(`❌ ${apiMessage(error)}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 15000 });
 
   const updateLine = (index, field, value) => {
     setLines((previous) => previous.map((line, i) => i === index ? { ...line, [field]: value } : line));

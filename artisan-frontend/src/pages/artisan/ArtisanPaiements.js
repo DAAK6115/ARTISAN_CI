@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const METHODS = [
   ['cash', 'Espèces'],
@@ -34,8 +35,8 @@ export default function ArtisanPaiements() {
   const [submittingId, setSubmittingId] = useState(null);
   const [disputes, setDisputes] = useState([]);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [response, disputesResponse] = await Promise.all([
         axios.get('/payments/artisan-workspace/'),
@@ -46,11 +47,12 @@ export default function ArtisanPaiements() {
     } catch (error) {
       setMessage(`❌ ${apiError(error)}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 15000 });
 
 
   const replyDispute = async (dispute) => {

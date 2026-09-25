@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 function money(value) {
   return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Number(value || 0))} FCFA`;
@@ -13,12 +14,21 @@ export default function ArtisanClientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    axios.get('/appointments/artisan-clients/')
-      .then((response) => setClients(response.data || []))
-      .catch(() => setError('Impossible de charger votre clientèle.'))
-      .finally(() => setLoading(false));
-  }, []);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await axios.get('/appointments/artisan-clients/');
+      setClients(response.data || []);
+      setError('');
+    } catch {
+      if (!silent) setError('Impossible de charger votre clientèle.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 20000 });
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();

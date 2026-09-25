@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const STATUS = {
   unpaid: ['Non payé', 'bg-amber-100 text-amber-800'],
@@ -24,8 +25,8 @@ export default function PaiementsPage() {
   const [loading, setLoading] = useState(true);
   const [disputes, setDisputes] = useState([]);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [paymentsResponse, disputesResponse] = await Promise.all([
         axios.get('/payments/mes/'),
@@ -36,11 +37,12 @@ export default function PaiementsPage() {
     } catch (error) {
       setMessage(`❌ ${apiError(error)}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 15000 });
 
 
 

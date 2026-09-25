@@ -5,6 +5,7 @@ import {
   getRefreshToken,
   updateTokens,
 } from './auth';
+import { notifyDataChanged } from './dataSync';
 
 const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
@@ -65,7 +66,16 @@ axiosInstance.interceptors.request.use(
 );
 
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = String(response.config?.method || 'get').toLowerCase();
+    if (['post', 'put', 'patch', 'delete'].includes(method)) {
+      window.setTimeout(() => notifyDataChanged({
+        method,
+        url: response.config?.url || '',
+      }), 0);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     const status = error.response?.status;

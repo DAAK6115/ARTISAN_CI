@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const STATUS_STYLES = {
   en_attente: ['Demande envoyée', 'bg-yellow-100 text-yellow-800'],
@@ -28,21 +29,23 @@ export default function MesRendezVous() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
-  const fetchRdv = async () => {
-    setLoading(true);
+  const fetchRdv = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await axios.get('/appointments/mes/');
       setRdvs(response.data);
     } catch (error) {
       setMessage(`❌ ${apiErrorMessage(error, 'Impossible de charger vos rendez-vous.')}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchRdv();
   }, []);
+
+  useAutoRefresh(() => fetchRdv(true), { intervalMs: 15000 });
 
   const renderStatut = (statut) => {
     const [label, style] = STATUS_STYLES[statut] || ['Inconnu', 'bg-gray-100 text-gray-600'];

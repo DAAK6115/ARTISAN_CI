@@ -12,11 +12,13 @@ export default function ArtisanProfileEditPage() {
     facebook: '',
     whatsapp: '',
     localisation: '',
+    photo_profil: null,
     photo_couverture: null,
     latitude: null,
     longitude: null,
   });
   const [preview, setPreview] = useState('');
+  const [profilePreview, setProfilePreview] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [locating, setLocating] = useState(false);
@@ -31,11 +33,13 @@ export default function ArtisanProfileEditPage() {
         facebook: data.facebook || '',
         whatsapp: data.whatsapp || '',
         localisation: data.localisation || '',
-        photo_couverture: null,
+        photo_profil: null,
+    photo_couverture: null,
         latitude: data.latitude,
         longitude: data.longitude,
       });
       setPreview(data.photo_couverture || '');
+      setProfilePreview(data.photo_profil || '');
     } catch {
       setMessage('Impossible de charger votre profil.');
     } finally {
@@ -104,6 +108,7 @@ export default function ArtisanProfileEditPage() {
     event.preventDefault();
     const data = new FormData();
     ['bio', 'site_web', 'facebook', 'whatsapp', 'localisation'].forEach((key) => data.append(key, form[key] || ''));
+    if (form.photo_profil) data.append('photo_profil', form.photo_profil);
     if (form.photo_couverture) data.append('photo_couverture', form.photo_couverture);
     if (form.latitude != null && Number.isFinite(Number(form.latitude))) {
       data.append('latitude', Number(form.latitude).toFixed(6));
@@ -171,10 +176,17 @@ export default function ArtisanProfileEditPage() {
             <label className="text-sm font-bold">Facebook<input type="url" value={form.facebook} onChange={(e) => setForm({ ...form, facebook: e.target.value })} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" /></label>
           </div>
 
-          <label className="block text-sm font-bold">
-            Photo de couverture
-            <input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0] || null; setForm({ ...form, photo_couverture: file }); if (file) setPreview(URL.createObjectURL(file)); }} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" />
-          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-bold">
+              Photo de profil
+              <input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0] || null; setForm({ ...form, photo_profil: file }); if (file) setProfilePreview(URL.createObjectURL(file)); }} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" />
+              <span className="mt-1 block text-xs font-normal text-[#829087]">Utilisée dans la carte, les résultats et votre profil public.</span>
+            </label>
+            <label className="block text-sm font-bold">
+              Photo de couverture
+              <input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0] || null; setForm({ ...form, photo_couverture: file }); if (file) setPreview(URL.createObjectURL(file)); }} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" />
+            </label>
+          </div>
 
           <div className="rounded-2xl bg-[#F7F8F6] p-4">
             <p className="text-sm font-black">Position GPS</p>
@@ -192,8 +204,17 @@ export default function ArtisanProfileEditPage() {
 
         <aside className="rounded-[28px] border border-black/5 bg-white p-5 sm:p-6">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-[#829087]">Aperçu & position</p>
-          {preview ? <img src={preview} alt="Aperçu" className="mt-4 h-52 w-full rounded-[22px] object-cover" /> : <div className="mt-4 h-52 rounded-[22px] bg-[#F4F6F4]" />}
-          <p className="mt-4 text-sm leading-6 text-[#526159]">{form.bio || 'Votre bio apparaîtra ici.'}</p>
+          <div className="relative mt-4">
+            {preview ? <img src={preview} alt="Aperçu de la couverture" className="h-52 w-full rounded-[22px] object-cover" /> : <div className="h-52 rounded-[22px] bg-[#F4F6F4]" />}
+            <div className="absolute -bottom-7 left-4">
+              {profilePreview ? (
+                <img src={profilePreview} alt="Aperçu du profil" className="h-16 w-16 rounded-2xl border-4 border-white object-cover shadow-md" />
+              ) : (
+                <span className="grid h-16 w-16 place-items-center rounded-2xl border-4 border-white bg-[#0B6B50] text-lg font-black text-white shadow-md">A</span>
+              )}
+            </div>
+          </div>
+          <p className="mt-10 text-sm leading-6 text-[#526159]">{form.bio || 'Votre bio apparaîtra ici.'}</p>
           {form.localisation && <p className="mt-3 text-sm font-bold">📍 {form.localisation}</p>}
 
           {hasCoordinates ? (

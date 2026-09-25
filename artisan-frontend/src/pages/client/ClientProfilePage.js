@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import LogoutButton from '../../components/LogoutButton';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 export default function ClientProfilePage() {
   const [profile, setProfile] = useState(null);
@@ -10,18 +11,24 @@ export default function ClientProfilePage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-    Promise.allSettled([axios.get('/accounts/profile/me/'), axios.get('/favoris/mes/')])
-      .then(([profileResult, favoritesResult]) => {
-        if (!mounted) return;
-        if (profileResult.status === 'fulfilled') setProfile(profileResult.value.data);
-        else setMessage('Impossible de charger votre profil.');
-        if (favoritesResult.status === 'fulfilled') setFavoriteCount((favoritesResult.value.data || []).length);
-        setLoading(false);
-      });
-    return () => { mounted = false; };
-  }, []);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    const [profileResult, favoritesResult] = await Promise.allSettled([
+      axios.get('/accounts/profile/me/'),
+      axios.get('/favoris/mes/'),
+    ]);
+    if (profileResult.status === 'fulfilled') {
+      setProfile(profileResult.value.data);
+      setMessage('');
+    } else if (!silent) {
+      setMessage('Impossible de charger votre profil.');
+    }
+    if (favoritesResult.status === 'fulfilled') setFavoriteCount((favoritesResult.value.data || []).length);
+    if (!silent) setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 30000 });
 
   if (loading) return <div className="mx-auto h-72 max-w-4xl animate-pulse rounded-[30px] bg-white" />;
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import AppIcon from '../../components/AppIcon';
 
 export default function ArtisanCertifications() {
@@ -15,6 +16,7 @@ export default function ArtisanCertifications() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  useAutoRefresh(load, { intervalMs: 30000 });
 
   const submit = async (event) => {
     event.preventDefault();

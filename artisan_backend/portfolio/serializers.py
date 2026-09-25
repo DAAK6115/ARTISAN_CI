@@ -2,6 +2,7 @@ import math
 import re
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.db.models import Avg, Count
 from rest_framework import serializers
 
 from common.validators import validate_image_upload
@@ -37,6 +38,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
     service_category_labels = serializers.SerializerMethodField()
     service_titles = serializers.SerializerMethodField()
     distance_km = serializers.SerializerMethodField()
+    rating_average = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     # Le GPS du navigateur peut envoyer beaucoup plus de 6 décimales.
     # On accepte d'abord la valeur comme flottant puis on la normalise vers
@@ -48,15 +51,17 @@ class PortfolioSerializer(serializers.ModelSerializer):
         model = Portfolio
         fields = [
             'id', 'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
-            'artisan_verification_status', 'bio', 'photo_couverture',
+            'artisan_verification_status', 'bio', 'photo_profil', 'photo_couverture',
             'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
             'longitude', 'visible', 'realisations', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
+            'rating_average', 'review_count',
         ]
         read_only_fields = [
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
             'artisan_verification_status', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
+            'rating_average', 'review_count',
         ]
 
 
@@ -80,8 +85,42 @@ class PortfolioSerializer(serializers.ModelSerializer):
         value = getattr(obj, 'distance_km_value', None)
         return round(float(value), 2) if value is not None else None
 
+
+    def _rating_stats(self, obj):
+        cached = getattr(obj, '_rating_stats_cache', None)
+        if cached is not None:
+            return cached
+
+        average = getattr(obj, 'rating_average_value', None)
+        count = getattr(obj, 'review_count_value', None)
+        if count is None:
+            stats = obj.artisan.services.aggregate(
+                average=Avg('avis__note'),
+                count=Count('avis'),
+            )
+            average = stats.get('average')
+            count = stats.get('count') or 0
+
+        cached = {
+            'average': round(float(average), 1) if average is not None else None,
+            'count': int(count or 0),
+        }
+        obj._rating_stats_cache = cached
+        return cached
+
+    def get_rating_average(self, obj):
+        return self._rating_stats(obj)['average']
+
+    def get_review_count(self, obj):
+        return self._rating_stats(obj)['count']
+
     def get_artisan_verified(self, obj):
         return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')
+
+    def validate_photo_profil(self, value):
+        if value is None:
+            return value
+        return validate_image_upload(value, max_mb=3)
 
     def validate_photo_couverture(self, value):
         if value is None:

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
@@ -10,14 +11,21 @@ export default function FavorisPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-    axios.get('/favoris/mes/')
-      .then((response) => mounted && setFavorites(response.data || []))
-      .catch(() => mounted && setMessage('Impossible de charger vos favoris.'))
-      .finally(() => mounted && setLoading(false));
-    return () => { mounted = false; };
-  }, []);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await axios.get('/favoris/mes/');
+      setFavorites(response.data || []);
+      setMessage('');
+    } catch {
+      if (!silent) setMessage('Impossible de charger vos favoris.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+  useAutoRefresh(() => load(true), { intervalMs: 20000 });
 
   const removeFavorite = async (favorite) => {
     try {

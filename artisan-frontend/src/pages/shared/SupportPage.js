@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const STATUS = { new: 'Nouveau', in_progress: 'En cours', waiting_user: 'Action requise', resolved: 'Résolu', closed: 'Fermé' };
 
@@ -15,6 +16,7 @@ export default function SupportPage() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  useAutoRefresh(load, { intervalMs: 30000 });
 
   const submit = async (event) => {
     event.preventDefault(); setNotice('');

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import ArtisanMap from '../../components/ArtisanMap';
 import AppIcon from '../../components/AppIcon';
 
@@ -24,6 +25,7 @@ export default function ArtisanPortfolio() {
   };
 
   useEffect(() => { load(); }, []);
+  useAutoRefresh(load, { intervalMs: 30000 });
 
   const savePosition = () => {
     if (!navigator.geolocation) return setMessage('La géolocalisation n’est pas disponible sur cet appareil.');

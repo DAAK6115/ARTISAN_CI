@@ -6,6 +6,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import CustomUser
 from services.models import Service
+from reviews.models import Review
 from .models import Portfolio
 from .serializers import PortfolioSerializer
 
@@ -100,6 +101,25 @@ class PortfolioDiscoveryTests(APITestCase):
         })
         self.assertEqual(expanded_response.status_code, status.HTTP_200_OK)
         self.assertEqual({item['artisan_nom'] for item in expanded_response.data['results']}, {'far-artisan'})
+
+    def test_discovery_exposes_real_rating_average_and_review_count(self):
+        artisan = self._artisan('rated-artisan', 'Cocody')
+        service = self._service(artisan, 'Installation plomberie', 'btp')
+        client = CustomUser.objects.create_user(
+            email='rating-client@example.com',
+            username='rating-client',
+            password='StrongPass123!',
+            role='client',
+        )
+        Review.objects.create(client=client, service=service, note=5, commentaire='Excellent')
+        Review.objects.create(client=client, service=service, note=4, commentaire='Très bien')
+
+        response = self.client.get(reverse('portfolio-map'), {'scope': 'all'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data['results'] if item['artisan_nom'] == 'rated-artisan')
+        self.assertEqual(row['review_count'], 2)
+        self.assertEqual(float(row['rating_average']), 4.5)
 
     def test_category_filter_only_returns_artisans_with_that_active_category(self):
         tailor = self._artisan('tailor', 'Cocody')

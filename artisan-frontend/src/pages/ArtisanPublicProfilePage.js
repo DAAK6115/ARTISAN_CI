@@ -7,6 +7,7 @@ import AppIcon from '../components/AppIcon';
 import PublicHeader from '../components/PublicHeader';
 import ReportButton from '../components/ReportButton';
 import { getUserRole, isAuthenticated } from '../utils/auth';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 
 const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
@@ -20,24 +21,29 @@ export default function ArtisanPublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const clientConnected = isAuthenticated() && getUserRole() === 'client';
 
-  useEffect(() => {
-    let mounted = true;
-    Promise.allSettled([
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    const [portfolioResult, certificationsResult, reviewsResult, servicesResult] = await Promise.allSettled([
       axios.get(`/portfolio/artisans/${username}/`),
       axios.get(`/certifications/artisan/${username}/`),
       axios.get(`/reviews/artisan/${username}/`),
       axios.get('/services/', { params: { artisan: username } }),
-    ]).then(([portfolioResult, certificationsResult, reviewsResult, servicesResult]) => {
-      if (!mounted) return;
-      if (portfolioResult.status === 'fulfilled') setPortfolio(portfolioResult.value.data);
-      else setMessage('Ce profil artisan est indisponible.');
-      setCertifications(certificationsResult.status === 'fulfilled' ? certificationsResult.value.data : []);
-      setReviews(reviewsResult.status === 'fulfilled' ? reviewsResult.value.data : []);
-      setServices(servicesResult.status === 'fulfilled' ? servicesResult.value.data : []);
-      setLoading(false);
-    });
-    return () => { mounted = false; };
-  }, [username]);
+    ]);
+
+    if (portfolioResult.status === 'fulfilled') {
+      setPortfolio(portfolioResult.value.data);
+      setMessage('');
+    } else if (!silent) {
+      setMessage('Impossible de charger ce profil.');
+    }
+    setCertifications(certificationsResult.status === 'fulfilled' ? certificationsResult.value.data || [] : []);
+    setReviews(reviewsResult.status === 'fulfilled' ? reviewsResult.value.data || [] : []);
+    setServices(servicesResult.status === 'fulfilled' ? servicesResult.value.data || [] : []);
+    if (!silent) setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [username]);
+  useAutoRefresh(() => load(true), { intervalMs: 30000 });
 
   const averageRating = useMemo(() => reviews.length ? (reviews.reduce((sum, review) => sum + Number(review.note || 0), 0) / reviews.length).toFixed(1) : null, [reviews]);
 
@@ -64,7 +70,11 @@ export default function ArtisanPublicProfilePage() {
           <div className="relative px-5 pb-6 sm:px-8 sm:pb-8">
             <div className="-mt-12 flex flex-col gap-5 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-4">
-                <span className="grid h-24 w-24 shrink-0 place-items-center rounded-[28px] border-[6px] border-white bg-[#0B6B50] text-2xl font-black text-white shadow-lg">{initials}</span>
+                {portfolio.photo_profil ? (
+                  <img src={portfolio.photo_profil} alt={`Photo de ${portfolio.artisan_nom}`} className="h-24 w-24 shrink-0 rounded-[28px] border-[6px] border-white object-cover shadow-lg" />
+                ) : (
+                  <span className="grid h-24 w-24 shrink-0 place-items-center rounded-[28px] border-[6px] border-white bg-[#0B6B50] text-2xl font-black text-white shadow-lg">{initials}</span>
+                )}
                 <div className="pb-1">
                   <div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black tracking-tight sm:text-3xl">{portfolio.artisan_nom}</h1>{portfolio.artisan_verified && <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]"><AppIcon name="shield" className="h-3.5 w-3.5" /> Artisan vérifié</span>}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#66736D]">
