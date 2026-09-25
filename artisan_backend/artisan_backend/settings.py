@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+
 ARTISAN_ENV = os.getenv("ARTISAN_ENV", "development").strip().lower()
 IS_PRODUCTION = ARTISAN_ENV == "production"
 
@@ -46,6 +47,7 @@ if render_hostname and render_hostname not in ALLOWED_HOSTS:
 
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -55,6 +57,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "geniuspay",
     "common.apps.CommonConfig",
     "accounts",
     "services",
@@ -335,3 +338,18 @@ LOGGING = {
         "level": "INFO",
     },
 }
+
+
+# --- GeniusPay ARTISAN_CI ---
+GENIUSPAY = {
+    "API_KEY": os.getenv("GENIUSPAY_API_KEY", "").strip(),
+    "API_SECRET": os.getenv("GENIUSPAY_API_SECRET", "").strip(),
+    "WEBHOOK_SECRET": os.getenv("GENIUSPAY_WEBHOOK_SECRET", "").strip() or None,
+    "SANDBOX": env_bool("GENIUSPAY_SANDBOX", True),
+    "TIMEOUT": int(os.getenv("GENIUSPAY_TIMEOUT", "30")),
+}
+
+ARTISAN_MOBILE_URL = os.getenv(
+    "ARTISAN_MOBILE_URL",
+    "http://localhost:5173",
+).rstrip("/")

@@ -28,33 +28,11 @@ class Quote(models.Model):
         ('cancelled', 'Annulé'),
     ]
 
-    reference = models.CharField(
-        max_length=24,
-        unique=True,
-        default=generate_quote_reference,
-        editable=False,
-    )
-    appointment = models.ForeignKey(
-        Appointment,
-        on_delete=models.CASCADE,
-        related_name='quotes',
-    )
-    artisan = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='quotes_sent',
-    )
-    client = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='quotes_received',
-    )
-    status = models.CharField(
-        max_length=16,
-        choices=STATUS_CHOICES,
-        default='draft',
-        db_index=True,
-    )
+    reference = models.CharField(max_length=24, unique=True, default=generate_quote_reference, editable=False)
+    appointment = models.ForeignKey(Appointment, on_delete=models.CASCADE, related_name='quotes')
+    artisan = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quotes_sent')
+    client = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='quotes_received')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='draft', db_index=True)
     notes = models.TextField(blank=True)
     valid_until = models.DateTimeField(null=True, blank=True)
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -100,17 +78,8 @@ class Quote(models.Model):
 class QuoteLine(models.Model):
     quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name='lines')
     description = models.CharField(max_length=180)
-    quantity = models.DecimalField(
-        max_digits=8,
-        decimal_places=2,
-        default=1,
-        validators=[MinValueValidator(Decimal('0.01'))],
-    )
-    unit_price = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        validators=[MinValueValidator(0)],
-    )
+    quantity = models.DecimalField(max_digits=8, decimal_places=2, default=1, validators=[MinValueValidator(Decimal('0.01'))])
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
     position = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
@@ -125,17 +94,22 @@ class QuoteLine(models.Model):
 
 
 class Payment(models.Model):
-    """
-    Registre de règlement déclaré par l'artisan.
+    """Règlement d'une prestation ARTISAN_CI.
 
-    ARTISAN_CI ne déclenche aucun paiement et ne décide jamais qu'une transaction
-    a réussi. Après réalisation de la prestation, seul l'artisan concerné peut
-    déclarer si le règlement a été reçu ou non.
+    Pour Mobile Money, GeniusPay est la source de vérité. Les statuts fournisseur
+    sont synchronisés via webhook signé, ou via une vérification serveur-à-serveur
+    lorsque le client revient du checkout.
     """
 
     STATUS_CHOICES = [
-        ('unpaid', 'Non payé'),
+        ('unpaid', 'Non payé (legacy/manuellement)'),
+        ('pending', 'En attente'),
+        ('processing', 'En cours'),
         ('paid', 'Payé'),
+        ('failed', 'Échoué'),
+        ('cancelled', 'Annulé'),
+        ('expired', 'Expiré'),
+        ('refunded', 'Remboursé'),
     ]
 
     METHOD_CHOICES = [
@@ -148,60 +122,41 @@ class Payment(models.Model):
         ('other', 'Autre'),
     ]
 
-    client = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='payments',
-    )
-    service = models.ForeignKey(
-        Service,
-        on_delete=models.PROTECT,
-        related_name='payments',
-    )
-    appointment = models.ForeignKey(
-        Appointment,
-        on_delete=models.PROTECT,
-        related_name='payments',
-        null=True,
-        blank=True,
-    )
-    quote = models.ForeignKey(
-        Quote,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='payments',
-    )
+    PROVIDER_CHOICES = [
+        ('manual', 'Manuel'),
+        ('geniuspay', 'GeniusPay'),
+    ]
+
+    client = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payments')
+    service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='payments')
+    appointment = models.ForeignKey(Appointment, on_delete=models.PROTECT, related_name='payments', null=True, blank=True)
+    quote = models.ForeignKey(Quote, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments')
 
     montant_initial = models.DecimalField(max_digits=12, decimal_places=2)
     reduction = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     montant = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=3, default='XOF')
 
-    methode_paiement = models.CharField(
-        max_length=24,
-        choices=METHOD_CHOICES,
-        null=True,
-        blank=True,
-    )
-    statut = models.CharField(
-        max_length=16,
-        choices=STATUS_CHOICES,
-        default='unpaid',
-        db_index=True,
-    )
+    methode_paiement = models.CharField(max_length=24, choices=METHOD_CHOICES, null=True, blank=True)
+    statut = models.CharField(max_length=16, choices=STATUS_CHOICES, default='pending', db_index=True)
 
-    transaction_id = models.CharField(
-        max_length=64,
-        unique=True,
-        db_index=True,
-        default=generate_payment_reference,
-    )
+    transaction_id = models.CharField(max_length=64, unique=True, db_index=True, default=generate_payment_reference)
     payment_reference = models.CharField(
         max_length=100,
         blank=True,
-        help_text='Référence fournie par l’artisan (Wave, Orange Money, virement, etc.).',
+        help_text='Référence externe GeniusPay ou référence de règlement manuel.',
     )
+
+    provider = models.CharField(max_length=24, choices=PROVIDER_CHOICES, default='manual', db_index=True)
+    provider_reference = models.CharField(max_length=100, blank=True, db_index=True)
+    provider_status = models.CharField(max_length=32, blank=True)
+    checkout_url = models.URLField(max_length=600, blank=True)
+    provider_payload = models.JSONField(default=dict, blank=True)
+    initiated_at = models.DateTimeField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+
+    # Champs historiques conservés pour les règlements non-Mobile-Money et les anciennes données.
     declared_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -221,6 +176,7 @@ class Payment(models.Model):
         indexes = [
             models.Index(fields=['client', 'statut'], name='pay_client_status_idx'),
             models.Index(fields=['appointment', 'statut'], name='pay_appt_status_idx'),
+            models.Index(fields=['provider', 'provider_status'], name='pay_provider_state_idx'),
         ]
 
     @property
@@ -229,3 +185,40 @@ class Payment(models.Model):
 
     def __str__(self):
         return f'{self.transaction_id} - {self.montant} {self.currency} - {self.statut}'
+
+
+class PaymentAttempt(models.Model):
+    """Trace immuable de chaque checkout GeniusPay lancé pour un règlement."""
+
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name='attempts')
+    provider_reference = models.CharField(max_length=100, unique=True)
+    status = models.CharField(max_length=32, default='pending', db_index=True)
+    gateway = models.CharField(max_length=32, blank=True)
+    checkout_url = models.URLField(max_length=600, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['payment', 'status'], name='pay_attempt_state_idx')]
+
+    def __str__(self):
+        return f'{self.provider_reference} - {self.status}'
+
+
+class PaymentGatewayEvent(models.Model):
+    """Journal idempotent des événements GeniusPay déjà traités."""
+
+    event_id = models.CharField(max_length=120, unique=True)
+    event_type = models.CharField(max_length=64, db_index=True)
+    provider_reference = models.CharField(max_length=100, blank=True, db_index=True)
+    payload = models.JSONField(default=dict, blank=True)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-processed_at']
+
+    def __str__(self):
+        return f'{self.event_type} - {self.event_id}'

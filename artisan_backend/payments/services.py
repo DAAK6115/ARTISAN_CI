@@ -10,6 +10,7 @@ from .models import Payment, Quote
 
 
 DECLARABLE_APPOINTMENT_STATUSES = {'termine', 'effectue'}
+MANUAL_PAYMENT_METHODS = {'cash', 'bank_transfer', 'other'}
 
 
 def accepted_quote_for(appointment):
@@ -17,13 +18,11 @@ def accepted_quote_for(appointment):
 
 
 def contract_total_for(appointment):
-    """Retourne le montant contractuel à utiliser pour le règlement.
+    """Retourne le montant contractuel à régler.
 
     - Prix fixe : prix de la prestation.
-    - À partir de : un devis accepté est prioritaire ; sinon le prix affiché
-      devient le montant minimum convenu. L'artisan ne peut donc pas facturer
-      silencieusement plus sans devis accepté.
-    - Sur devis : un devis accepté reste obligatoire.
+    - À partir de : devis accepté prioritaire, sinon prix minimum affiché.
+    - Sur devis : devis accepté obligatoire.
     """
     quote = accepted_quote_for(appointment)
     if quote:
@@ -47,6 +46,33 @@ def current_payment_for(appointment):
     return appointment.payments.order_by('-updated_at', '-id').first()
 
 
+def get_or_create_payment_for_appointment(appointment):
+    total, quote = contract_total_for(appointment)
+    payment = current_payment_for(appointment)
+    if payment is None:
+        payment = Payment.objects.create(
+            client=appointment.client,
+            service=appointment.service,
+            appointment=appointment,
+            quote=quote,
+            montant_initial=total,
+            reduction=Decimal('0'),
+            montant=total,
+            currency='XOF',
+            statut='pending',
+        )
+    elif payment.statut != 'paid':
+        payment.quote = quote
+        payment.montant_initial = total
+        payment.reduction = Decimal('0')
+        payment.montant = total
+        payment.currency = 'XOF'
+        payment.save(update_fields=[
+            'quote', 'montant_initial', 'reduction', 'montant', 'currency', 'updated_at'
+        ])
+    return payment, quote
+
+
 def payment_workspace_for(artisan):
     appointments = (
         Appointment.objects.filter(
@@ -66,8 +92,6 @@ def payment_workspace_for(artisan):
         except ValidationError:
             total, quote = None, None
 
-        # Si un règlement a déjà été déclaré, son montant figé est la source
-        # de vérité même si la prestation/devis est modifié plus tard.
         if payment is not None:
             total = payment.montant
             quote = payment.quote
@@ -83,15 +107,74 @@ def payment_workspace_for(artisan):
                 'amount': total,
                 'quote_reference': quote.reference if quote else None,
                 'payment': payment,
-                'can_declare': total is not None and (not payment or payment.statut != 'paid'),
+                'can_declare': (
+                    total is not None
+                    and (not payment or payment.statut != 'paid')
+                    and (not payment or payment.provider != 'geniuspay')
+                ),
+            }
+        )
+    return rows
+
+
+def client_payment_workspace_for(client):
+    appointments = (
+        Appointment.objects.filter(
+            client=client,
+            statut__in=DECLARABLE_APPOINTMENT_STATUSES,
+        )
+        .select_related('client', 'service', 'service__artisan')
+        .prefetch_related('quotes', 'payments')
+        .order_by('-completed_at', '-date_rdv')
+    )
+
+    rows = []
+    for appointment in appointments:
+        payment = current_payment_for(appointment)
+        error = ''
+        try:
+            total, quote = contract_total_for(appointment)
+        except ValidationError as exc:
+            total, quote = None, None
+            detail = getattr(exc, 'detail', exc)
+            error = str(detail[0] if isinstance(detail, list) and detail else detail)
+
+        if payment is not None:
+            total = payment.montant
+            quote = payment.quote
+
+        rows.append(
+            {
+                'appointment': appointment,
+                'amount': total,
+                'quote': quote,
+                'payment': payment,
+                'error': error,
+                'can_pay': (
+                    appointment.statut == 'termine'
+                    and total is not None
+                    and (not payment or payment.statut != 'paid')
+                ),
             }
         )
     return rows
 
 
 def declare_payment(*, artisan, appointment_id, payment_status, method=None, payment_reference='', notes=''):
+    """Fallback manuel uniquement pour espèces/virement/autre.
+
+    Les moyens Mobile Money doivent obligatoirement passer par GeniusPay.
+    """
     if payment_status not in {'paid', 'unpaid'}:
         raise ValidationError({'statut': 'Statut de paiement invalide.'})
+
+    if payment_status == 'paid' and method not in MANUAL_PAYMENT_METHODS:
+        raise ValidationError({
+            'methode_paiement': (
+                'Wave, Orange Money, MTN Money et Moov Money doivent être réglés '
+                'par le checkout GeniusPay côté client.'
+            )
+        })
 
     with transaction.atomic():
         appointment = (
@@ -112,14 +195,14 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
         payment = current_payment_for(appointment)
 
         if payment and payment.statut == 'paid':
+            raise ValidationError('Ce règlement est déjà confirmé comme payé.')
+        if payment and payment.provider == 'geniuspay' and payment.statut in {'pending', 'processing'}:
             raise ValidationError(
-                'Ce règlement est déjà déclaré comme payé. Une correction devra passer par l’administration.'
+                'Un paiement GeniusPay est déjà en cours. Attendez son résultat avant toute correction manuelle.'
             )
 
         if payment_status == 'paid' and not method:
-            raise ValidationError(
-                {'methode_paiement': 'Indiquez comment le client vous a réglé.'}
-            )
+            raise ValidationError({'methode_paiement': 'Indiquez comment le client vous a réglé.'})
 
         if payment is None:
             payment = Payment(
@@ -137,6 +220,10 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
             payment.reduction = Decimal('0')
             payment.montant = total
 
+        payment.provider = 'manual'
+        payment.provider_status = ''
+        payment.provider_reference = ''
+        payment.checkout_url = ''
         payment.statut = payment_status
         payment.methode_paiement = method if payment_status == 'paid' else None
         payment.payment_reference = (payment_reference or '').strip()[:100] if payment_status == 'paid' else ''
@@ -144,21 +231,15 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
         payment.declared_at = timezone.now()
         payment.notes = (notes or '').strip()[:255]
         payment.paid_at = timezone.now() if payment_status == 'paid' else None
+        payment.confirmed_at = payment.paid_at
         payment.save()
 
-        if payment_status == 'paid':
-            title = 'Paiement confirmé par votre artisan'
-            message = (
-                f'{artisan.username} confirme avoir reçu {payment.montant} FCFA '
-                f'pour {appointment.service.titre}.'
-            )
-        else:
-            title = 'Paiement non reçu'
-            message = (
-                f'{artisan.username} indique que le règlement de '
-                f'{appointment.service.titre} n’a pas encore été reçu.'
-            )
-
+        title = 'Paiement manuel confirmé' if payment_status == 'paid' else 'Règlement en attente'
+        message = (
+            f'{artisan.username} confirme avoir reçu {payment.montant} FCFA pour {appointment.service.titre}.'
+            if payment_status == 'paid'
+            else f'Le règlement de {appointment.service.titre} est toujours en attente.'
+        )
         Notification.objects.create(
             destinataire=appointment.client,
             rendez_vous=appointment,
@@ -167,5 +248,4 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
             message=message,
             lien_redirection='/client/paiements',
         )
-
         return payment

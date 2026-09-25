@@ -20,6 +20,7 @@ export interface QuoteLineItem {
 }
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'cancelled';
+export type PaymentStatus = 'unpaid' | 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'expired' | 'refunded';
 
 export interface ClientQuoteItem {
   id: number;
@@ -46,6 +47,17 @@ export interface ClientQuoteItem {
   lines: QuoteLineItem[];
 }
 
+export interface PaymentAttemptItem {
+  id: number;
+  provider_reference: string;
+  status: string;
+  gateway: string;
+  checkout_url: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export interface ClientPaymentItem {
   id: number;
   client: string;
@@ -62,15 +74,42 @@ export interface ClientPaymentItem {
   currency: string;
   methode_paiement: string | null;
   methode_paiement_label: string | null;
-  statut: 'paid' | 'unpaid';
+  statut: PaymentStatus;
   transaction_id: string;
   payment_reference: string;
+  provider: 'manual' | 'geniuspay';
+  provider_reference: string;
+  provider_status: string;
+  checkout_url: string;
+  initiated_at: string | null;
+  confirmed_at: string | null;
+  failed_at: string | null;
   declared_by_username: string | null;
   declared_at: string | null;
   paid_at: string | null;
   notes: string;
   date_paiement: string;
   updated_at: string;
+  attempts: PaymentAttemptItem[];
+}
+
+export interface ClientPaymentWorkspaceRow {
+  appointment_id: number;
+  service_titre: string;
+  artisan_username: string;
+  appointment_status: string;
+  completed_at: string | null;
+  amount: string | number | null;
+  quote_reference: string | null;
+  can_pay: boolean;
+  error: string;
+  payment: ClientPaymentItem | null;
+}
+
+export interface GeniusPayInitiation {
+  payment: ClientPaymentItem;
+  checkout_url: string;
+  provider_reference: string;
 }
 
 export interface NotificationServiceMini {
@@ -142,6 +181,18 @@ export function getClientPayments(): Promise<ClientPaymentItem[]> {
   return apiRequest<ClientPaymentItem[]>('/payments/mes/');
 }
 
+export function getClientPaymentWorkspace(): Promise<ClientPaymentWorkspaceRow[]> {
+  return apiRequest<ClientPaymentWorkspaceRow[]>('/payments/client-workspace/');
+}
+
+export function initiateGeniusPayPayment(appointmentId: number): Promise<GeniusPayInitiation> {
+  return apiRequest<GeniusPayInitiation>(`/payments/geniuspay/initiate/${appointmentId}/`, { method: 'POST' });
+}
+
+export function syncGeniusPayPayment(paymentId: number): Promise<ClientPaymentItem> {
+  return apiRequest<ClientPaymentItem>(`/payments/geniuspay/sync/${paymentId}/`, { method: 'POST' });
+}
+
 export function getMyReviews(): Promise<ReviewItem[]> {
   return apiRequest<ReviewItem[]>('/reviews/mes/');
 }
@@ -168,7 +219,6 @@ export function createSupportTicket(input: { objet: string; message: string }): 
 
 function normalizeCollection<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
-
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
     for (const key of ['results', 'data', 'items']) {
@@ -176,34 +226,14 @@ function normalizeCollection<T>(payload: unknown): T[] {
       if (Array.isArray(candidate)) return candidate as T[];
     }
   }
-
-  throw new ApiError(
-    'Réponse invalide reçue pour la liste des artisans proches.',
-    502,
-    payload
-  );
+  throw new ApiError('Réponse invalide reçue pour la liste des artisans proches.', 502, payload);
 }
 
-export async function getNearbyArtisans(params: {
-  lat: number;
-  lng: number;
-  radius: number;
-}): Promise<PublicPortfolio[]> {
-  // Une précision d’environ 10 m suffit pour la recherche de proximité et évite
-  // d’envoyer plus de décimales GPS que nécessaire au backend.
+export async function getNearbyArtisans(params: { lat: number; lng: number; radius: number }): Promise<PublicPortfolio[]> {
   const lat = Number(params.lat.toFixed(4));
   const lng = Number(params.lng.toFixed(4));
-  const query = new URLSearchParams({
-    lat: String(lat),
-    lng: String(lng),
-    radius: String(params.radius)
-  });
-
-  const payload = await apiRequest<unknown>(
-    `/portfolio/map/?${query.toString()}`,
-    { auth: false }
-  );
-
+  const query = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(params.radius) });
+  const payload = await apiRequest<unknown>(`/portfolio/map/?${query.toString()}`, { auth: false });
   return normalizeCollection<PublicPortfolio>(payload);
 }
 

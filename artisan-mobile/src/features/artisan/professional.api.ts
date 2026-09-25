@@ -59,9 +59,16 @@ export interface PaymentRecord {
   currency: string;
   methode_paiement: string | null;
   methode_paiement_label: string | null;
-  statut: 'paid' | 'unpaid';
+  statut: 'unpaid' | 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'expired' | 'refunded';
   transaction_id: string;
   payment_reference: string;
+  provider: 'manual' | 'geniuspay';
+  provider_reference: string;
+  provider_status: string;
+  checkout_url: string;
+  initiated_at: string | null;
+  confirmed_at: string | null;
+  failed_at: string | null;
   declared_by_username: string | null;
   declared_at: string | null;
   paid_at: string | null;
@@ -91,13 +98,14 @@ export interface CompleteServicePaymentInfo {
   montant: string | number;
   currency: string;
   quote_reference: string | null;
-  payment_methods: Array<{ value: string; label: string }>;
 }
 
 export interface CompleteServicePaymentResponse {
   message: string;
   appointment_status: 'termine';
-  payment: PaymentRecord;
+  amount: string | number;
+  currency: string;
+  quote_reference: string | null;
 }
 
 export interface CertificationItem {
@@ -238,15 +246,8 @@ export function getCompleteServicePayment(appointmentId: number): Promise<Comple
   return apiRequest<CompleteServicePaymentInfo>(`/payments/complete-service/${appointmentId}/`);
 }
 
-export function completeServiceWithPayment(appointmentId: number, input: {
-  statut: 'paid' | 'unpaid';
-  methode_paiement?: string | null;
-  payment_reference?: string;
-  notes?: string;
-}): Promise<CompleteServicePaymentResponse> {
+export function completeServiceWithPayment(appointmentId: number): Promise<CompleteServicePaymentResponse> {
   return apiRequest<CompleteServicePaymentResponse>(`/payments/complete-service/${appointmentId}/`, {
-    method: 'POST',
-    body: input
+    method: 'POST'
   });
 }
-

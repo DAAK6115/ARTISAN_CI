@@ -1,36 +1,18 @@
 from datetime import datetime, timedelta
 
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.models import CustomUser
 from notifications.models import Notification
-from .models import (
-    Appointment,
-    AppointmentStatusHistory,
-    ArtisanAvailability,
-    ArtisanTimeOff,
-)
+from .models import Appointment, AppointmentStatusHistory, ArtisanAvailability, ArtisanTimeOff
 
 
 ACTIVE_BOOKING_STATUSES = {
-    'en_attente',
-    'accepte',
-    'confirme',
-    'en_route',
-    'en_cours',
-    'termine',
+    'en_attente', 'accepte', 'confirme', 'en_route', 'en_cours', 'termine',
 }
-
-TERMINAL_STATUSES = {
-    'effectue',
-    'refuse',
-    'annule_client',
-    'annule_artisan',
-    'annule',
-}
+TERMINAL_STATUSES = {'effectue', 'refuse', 'annule_client', 'annule_artisan', 'annule'}
 
 ARTISAN_TRANSITIONS = {
     'en_attente': {'accepte', 'refuse'},
@@ -39,7 +21,6 @@ ARTISAN_TRANSITIONS = {
     'en_route': {'en_cours', 'annule_artisan'},
     'en_cours': {'termine'},
 }
-
 CLIENT_TRANSITIONS = {
     'en_attente': {'annule_client'},
     'accepte': {'annule_client'},
@@ -54,7 +35,7 @@ STATUS_NOTIFICATION_MESSAGES = {
     'en_cours': ('Prestation démarrée', 'Votre prestation a commencé.'),
     'termine': (
         'Prestation terminée',
-        'L’artisan a terminé la prestation. Le règlement sera déclaré séparément par l’artisan, puis vous pourrez confirmer la clôture.',
+        'L’artisan a terminé la prestation. Vous pouvez maintenant la régler via ARTISAN_CI avec GeniusPay.',
     ),
     'effectue': ('Rendez-vous clôturé', 'La prestation a été confirmée et clôturée.'),
     'refuse': ('Rendez-vous refusé', 'L’artisan ne peut pas accepter cette demande.'),
@@ -69,21 +50,14 @@ def appointment_end_for_service(service, start):
 
 def _local_interval_for_availability(day, availability):
     tz = timezone.get_current_timezone()
-    start = timezone.make_aware(
-        datetime.combine(day, availability.heure_debut),
-        timezone=tz,
-    )
-    end = timezone.make_aware(
-        datetime.combine(day, availability.heure_fin),
-        timezone=tz,
-    )
+    start = timezone.make_aware(datetime.combine(day, availability.heure_debut), timezone=tz)
+    end = timezone.make_aware(datetime.combine(day, availability.heure_fin), timezone=tz)
     return start, end
 
 
 def _validate_weekly_availability(service, start, end):
     local_start = timezone.localtime(start)
     local_end = timezone.localtime(end)
-
     if local_start.date() != local_end.date():
         raise ValidationError('Le rendez-vous ne peut pas dépasser minuit.')
 
@@ -92,25 +66,19 @@ def _validate_weekly_availability(service, start, end):
         jour_semaine=local_start.weekday(),
         actif=True,
     )
-
     for window in windows:
-        window_start, window_end = _local_interval_for_availability(
-            local_start.date(),
-            window,
-        )
+        window_start, window_end = _local_interval_for_availability(local_start.date(), window)
         if start >= window_start and end <= window_end:
             return
-
     raise ValidationError("Ce créneau est en dehors des disponibilités de l'artisan.")
 
 
 def _validate_time_off(service, start, end):
-    blocked = ArtisanTimeOff.objects.filter(
+    if ArtisanTimeOff.objects.filter(
         artisan=service.artisan,
         debut__lt=end,
         fin__gt=start,
-    ).exists()
-    if blocked:
+    ).exists():
         raise ValidationError("L'artisan est indisponible sur ce créneau.")
 
 
@@ -130,15 +98,13 @@ def _validate_existing_appointments(service, start, end, exclude_id=None):
 def validate_booking_slot(service, start, *, exclude_id=None):
     if not service.is_active or not service.artisan.is_active:
         raise ValidationError("Cette prestation n'est pas disponible.")
-
     if timezone.is_naive(start):
         start = timezone.make_aware(start, timezone.get_current_timezone())
 
     minimum_start = timezone.now() + timedelta(hours=service.delai_reservation_heures)
     if start < minimum_start:
         raise ValidationError(
-            f'Ce service doit être réservé au moins '
-            f'{service.delai_reservation_heures} heure(s) à l’avance.'
+            f'Ce service doit être réservé au moins {service.delai_reservation_heures} heure(s) à l’avance.'
         )
 
     end = appointment_end_for_service(service, start)
@@ -153,15 +119,9 @@ def create_appointment(*, serializer, client):
     start = serializer.validated_data['date_rdv']
 
     with transaction.atomic():
-        # Sur PostgreSQL, ce verrou sérialise les réservations concurrentes
-        # visant le même artisan pendant la vérification du créneau.
         CustomUser.objects.select_for_update().get(pk=service.artisan_id)
         end = validate_booking_slot(service, start)
-        appointment = serializer.save(
-            client=client,
-            date_fin=end,
-            statut='en_attente',
-        )
+        appointment = serializer.save(client=client, date_fin=end, statut='en_attente')
         AppointmentStatusHistory.objects.create(
             appointment=appointment,
             ancien_statut='',
@@ -191,7 +151,12 @@ def allowed_transitions_for(appointment, user):
     if user == appointment.service.artisan:
         return sorted(ARTISAN_TRANSITIONS.get(appointment.statut, set()))
     if user == appointment.client:
-        return sorted(CLIENT_TRANSITIONS.get(appointment.statut, set()))
+        allowed = set(CLIENT_TRANSITIONS.get(appointment.statut, set()))
+        # Une prestation ne peut être clôturée côté client que lorsque le paiement
+        # a été confirmé par GeniusPay (ou un règlement manuel autorisé).
+        if 'effectue' in allowed and not appointment.payments.filter(statut='paid').exists():
+            allowed.discard('effectue')
+        return sorted(allowed)
     return []
 
 
@@ -206,7 +171,6 @@ def _notify_transition(appointment, actor, new_status):
     data = STATUS_NOTIFICATION_MESSAGES.get(new_status)
     if not data:
         return
-
     title, message = data
     if actor == appointment.client:
         recipient = appointment.service.artisan
@@ -214,7 +178,6 @@ def _notify_transition(appointment, actor, new_status):
     else:
         recipient = appointment.client
         link = '/client/rdvs'
-
     Notification.objects.create(
         destinataire=recipient,
         rendez_vous=appointment,
@@ -236,11 +199,12 @@ def transition_appointment(*, appointment_id, actor, new_status, note=''):
         if actor.role != 'admin':
             allowed = set(allowed_transitions_for(appointment, actor))
             if new_status not in allowed:
+                if actor == appointment.client and new_status == 'effectue' and appointment.statut == 'termine':
+                    raise PermissionDenied('Le paiement doit être confirmé avant de clôturer la prestation.')
                 raise PermissionDenied('Transition de statut non autorisée.')
 
         if new_status not in dict(Appointment.STATUT_CHOICES):
             raise ValidationError('Statut invalide.')
-
         if new_status == 'annule_client':
             _enforce_client_cancellation_policy(appointment)
 
@@ -300,13 +264,10 @@ def generate_available_slots(service, day, *, step_minutes=30):
                     date_fin__gt=current,
                 ).exists()
                 if not blocked_by_time_off and not busy:
-                    slots.append(
-                        {
-                            'start': current.isoformat(),
-                            'end': end.isoformat(),
-                            'label': timezone.localtime(current).strftime('%H:%M'),
-                        }
-                    )
+                    slots.append({
+                        'start': current.isoformat(),
+                        'end': end.isoformat(),
+                        'label': timezone.localtime(current).strftime('%H:%M'),
+                    })
             current += step
-
     return slots
