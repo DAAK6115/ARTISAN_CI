@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import AppIcon from './AppIcon';
+import BrandLogo from './BrandLogo';
 import { getRoleHomePath, getUserRole, isAuthenticated } from '../utils/auth';
 
 export default function PublicHeader() {
@@ -9,14 +10,8 @@ export default function PublicHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-black/5 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-3" aria-label="Accueil Artisan CI">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#0B6B50] text-white shadow-sm">
-            <AppIcon name="tools" className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-base font-black tracking-tight text-[#111815]">ARTISAN_CI</p>
-            <p className="hidden text-[11px] font-medium text-[#66736D] sm:block">Le savoir-faire ivoirien, plus proche</p>
-          </div>
+        <Link to="/" className="flex min-w-0 items-center" aria-label="Accueil Artisan CI">
+          <BrandLogo variant="horizontal" imageClassName="h-12 w-auto sm:h-14" />
         </Link>
 
         <nav className="flex items-center gap-2 text-sm font-semibold">

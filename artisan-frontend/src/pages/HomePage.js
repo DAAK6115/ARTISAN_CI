@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from '../utils/axiosInstance';
 import AppIcon from '../components/AppIcon';
 import PublicHeader from '../components/PublicHeader';
+import BrandLogo from '../components/BrandLogo';
 
 const categories = [
   ['btp', 'Bâtiment'],
@@ -196,8 +197,13 @@ export default function HomePage() {
       </main>
 
       <footer className="border-t border-black/5 bg-[#111815] text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-sm text-white/65 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-          <p><strong className="text-white">ARTISAN_CI</strong> — plateforme de mise en relation avec les artisans.</p>
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-7 text-sm text-white/65 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
+          <div className="flex items-center gap-4">
+            <span className="rounded-2xl bg-white px-3 py-2">
+              <BrandLogo variant="horizontal" imageClassName="h-12 w-auto sm:h-14" />
+            </span>
+            <p>Plateforme de mise en relation avec les artisans.</p>
+          </div>
           <p>Conçue pour une utilisation simple sur mobile et ordinateur.</p>
         </div>
       </footer>

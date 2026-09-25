@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import AppIcon from './AppIcon';
 import LogoutButton from './LogoutButton';
+import BrandLogo from './BrandLogo';
 
 const items = [
   ['/admin/dashboard', 'chart', 'Vue d’ensemble'],
@@ -36,14 +37,8 @@ export default function AdminNavbar() {
     <>
       <aside className="hidden w-72 shrink-0 border-r border-black/5 bg-white lg:sticky lg:top-0 lg:block lg:h-screen">
         <div className="flex h-full flex-col p-4">
-          <Link to="/admin/dashboard" className="flex items-center gap-3 px-2 py-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#10271F] text-white shadow-sm">
-              <AppIcon name="shield" className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="font-black tracking-tight text-[#111815]">ARTISAN_CI</p>
-              <p className="text-xs text-[#829087]">Administration</p>
-            </div>
+          <Link to="/admin/dashboard" className="px-2 py-3">
+            <BrandLogo variant="horizontal" subtitle="Administration" imageClassName="h-12 w-auto" />
           </Link>
           <nav className="mt-5 space-y-1">{items.map((item) => <NavItem key={item[0]} item={item} />)}</nav>
           <div className="mt-auto border-t border-black/5 pt-4">
@@ -53,9 +48,8 @@ export default function AdminNavbar() {
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-black/5 bg-white/95 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <Link to="/admin/dashboard" className="flex items-center gap-2 font-black">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#10271F] text-white"><AppIcon name="shield" className="h-4 w-4" /></span>
-          ARTISAN_CI Admin
+        <Link to="/admin/dashboard" className="flex min-w-0 items-center">
+          <BrandLogo variant="horizontal" imageClassName="h-10 w-auto" />
         </Link>
         <button onClick={() => setOpen(true)} className="grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4]" aria-label="Ouvrir le menu"><AppIcon name="menu" className="h-5 w-5" /></button>
       </header>

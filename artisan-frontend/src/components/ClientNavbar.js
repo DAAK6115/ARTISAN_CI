@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import axios from '../utils/axiosInstance';
 import AppIcon from './AppIcon';
 import LogoutButton from './LogoutButton';
+import BrandLogo from './BrandLogo';
 
 const primary = [
   ['/client/dashboard', 'home', 'Accueil'],
@@ -67,14 +68,8 @@ export default function ClientNavbar() {
     <>
       <aside className="hidden w-72 shrink-0 border-r border-black/5 bg-white md:sticky md:top-0 md:block md:h-screen">
         <div className="flex h-full flex-col p-4">
-          <Link to="/" className="flex items-center gap-3 px-2 py-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#0B6B50] text-white shadow-sm">
-              <AppIcon name="tools" className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="font-black tracking-tight text-[#111815]">ARTISAN_CI</p>
-              <p className="text-xs text-[#829087]">Espace client</p>
-            </div>
+          <Link to="/" className="px-2 py-3">
+            <BrandLogo variant="horizontal" subtitle="Espace client" imageClassName="h-12 w-auto" />
           </Link>
 
           <nav className="mt-5 space-y-1" aria-label="Navigation client">
@@ -90,9 +85,8 @@ export default function ClientNavbar() {
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-black/5 bg-white/90 px-4 py-3 backdrop-blur-xl md:hidden">
-        <Link to="/client/dashboard" className="flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#0B6B50] text-white"><AppIcon name="tools" className="h-4 w-4" /></span>
-          <span className="text-sm font-black tracking-tight">ARTISAN_CI</span>
+        <Link to="/client/dashboard" className="flex min-w-0 items-center">
+          <BrandLogo variant="horizontal" imageClassName="h-10 w-auto" />
         </Link>
         <div className="flex items-center gap-2">
           <Link to="/client/notifications" className="relative grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139]" aria-label="Notifications">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import AppIcon from './AppIcon';
 import LogoutButton from './LogoutButton';
+import BrandLogo from './BrandLogo';
 
 const primary = [
   ['/artisan/dashboard', 'home', 'Accueil'],
@@ -45,14 +46,8 @@ export default function ArtisanNavbar() {
     <>
       <header className="sticky top-0 z-40 border-b border-black/5 bg-white/95 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link to="/artisan/dashboard" className="flex min-w-0 items-center gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#0B6B50] text-white shadow-sm">
-              <AppIcon name="tools" className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate font-black tracking-tight text-[#111815]">ARTISAN_CI</p>
-              <p className="truncate text-[11px] font-semibold text-[#829087]">Espace professionnel</p>
-            </div>
+          <Link to="/artisan/dashboard" className="min-w-0">
+            <BrandLogo variant="horizontal" subtitle="Espace professionnel" imageClassName="h-12 w-auto sm:h-14" />
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Navigation artisan principale">

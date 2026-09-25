@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import BrandLogo from '../../components/BrandLogo';
 import {
   clearSession,
   getRoleHomePath,
@@ -64,10 +65,16 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="bg-indigo-600 p-6 text-center">
-            <h1 className="text-2xl font-bold text-white">Artisan_CI</h1>
-            <p className="text-indigo-200 mt-1">Plateforme des artisans</p>
+        <div className="overflow-hidden rounded-[24px] bg-white shadow-lg">
+          <div className="border-b border-[#E8ECE8] bg-white px-6 py-5 text-center">
+            <div className="flex justify-center">
+              <BrandLogo
+                variant="horizontal"
+                imageClassName="h-16 w-auto sm:h-[72px]"
+                subtitle="Plateforme des artisans"
+                subtitleClassName="mt-1 text-sm font-medium text-[#66736D]"
+              />
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="p-6 space-y-6">

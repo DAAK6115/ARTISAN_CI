@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import serializers
 
 from common.validators import validate_image_upload
+from services.models import Service
 from .models import Portfolio, Realisation
 
 
@@ -32,6 +33,10 @@ class PortfolioSerializer(serializers.ModelSerializer):
     artisan_id = serializers.IntegerField(source='artisan.id', read_only=True)
     artisan_verified = serializers.SerializerMethodField()
     artisan_verification_status = serializers.CharField(source='artisan.verification_status', read_only=True)
+    service_categories = serializers.SerializerMethodField()
+    service_category_labels = serializers.SerializerMethodField()
+    service_titles = serializers.SerializerMethodField()
+    distance_km = serializers.SerializerMethodField()
 
     # Le GPS du navigateur peut envoyer beaucoup plus de 6 décimales.
     # On accepte d'abord la valeur comme flottant puis on la normalise vers
@@ -45,12 +50,35 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'id', 'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
             'artisan_verification_status', 'bio', 'photo_couverture',
             'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
-            'longitude', 'visible', 'realisations',
+            'longitude', 'visible', 'realisations', 'service_categories',
+            'service_category_labels', 'service_titles', 'distance_km',
         ]
         read_only_fields = [
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
-            'artisan_verification_status',
+            'artisan_verification_status', 'service_categories',
+            'service_category_labels', 'service_titles', 'distance_km',
         ]
+
+
+    def _active_services(self, obj):
+        prefetched = getattr(obj.artisan, 'active_services_for_discovery', None)
+        if prefetched is not None:
+            return list(prefetched)
+        return list(obj.artisan.services.filter(is_active=True).order_by('titre'))
+
+    def get_service_categories(self, obj):
+        return sorted({service.categorie for service in self._active_services(obj) if service.categorie})
+
+    def get_service_category_labels(self, obj):
+        labels = {value: label for value, label in Service.CATEGORIES_CHOICES}
+        return sorted({labels.get(service.categorie, service.categorie) for service in self._active_services(obj) if service.categorie})
+
+    def get_service_titles(self, obj):
+        return [service.titre for service in self._active_services(obj)]
+
+    def get_distance_km(self, obj):
+        value = getattr(obj, 'distance_km_value', None)
+        return round(float(value), 2) if value is not None else None
 
     def get_artisan_verified(self, obj):
         return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')
