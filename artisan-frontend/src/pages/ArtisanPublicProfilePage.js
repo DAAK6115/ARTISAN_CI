@@ -77,8 +77,13 @@ export default function ArtisanPublicProfilePage() {
                 )}
                 <div className="pb-1">
                   <div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black tracking-tight sm:text-3xl">{portfolio.artisan_nom}</h1>{portfolio.artisan_verified && <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]"><AppIcon name="shield" className="h-3.5 w-3.5" /> Artisan vérifié</span>}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#66736D]">
-                    {portfolio.localisation && <span className="inline-flex items-center gap-1.5"><AppIcon name="pin" className="h-4 w-4 text-[#0B6B50]" />{portfolio.localisation}</span>}
+                  <div className="mt-2 flex flex-col items-start gap-2">
+                    {portfolio.localisation && (
+                      <span className="inline-flex max-w-full items-start gap-1.5 rounded-xl border border-black/5 bg-[#F4F6F4] px-3 py-2 text-sm font-bold leading-5 text-[#334139] shadow-sm">
+                        <AppIcon name="pin" className="mt-0.5 h-4 w-4 shrink-0 text-[#0B6B50]" />
+                        <span className="line-clamp-2 break-words">{portfolio.localisation}</span>
+                      </span>
+                    )}
                     {averageRating && <span className="rounded-full bg-[#FFF7DD] px-2.5 py-1 text-xs font-black text-[#926800]">★ {averageRating} · {reviews.length} avis</span>}
                   </div>
                 </div>
