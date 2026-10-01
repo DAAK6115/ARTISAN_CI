@@ -4,6 +4,7 @@ import axios from '../utils/axiosInstance';
 import AppIcon from '../components/AppIcon';
 import PublicHeader from '../components/PublicHeader';
 import BrandLogo from '../components/BrandLogo';
+import { formatServiceMoney } from '../utils/currency';
 
 const categories = [
   ['btp', 'Bâtiment'],
@@ -13,8 +14,6 @@ const categories = [
   ['electronique', 'Électronique'],
   ['services_numeriques', 'Numérique'],
 ];
-
-const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -124,7 +123,7 @@ export default function HomePage() {
               </div>
               <div className="absolute bottom-2 right-1 w-56 rounded-3xl bg-[#111815] p-5 text-white shadow-2xl">
                 <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#E7B451]">Pensé localement</p>
-                <p className="mt-2 text-lg font-black">FCFA · proximité · simplicité</p>
+                <p className="mt-2 text-lg font-black">Prix locaux · proximité · simplicité</p>
                 <p className="mt-2 text-xs leading-5 text-white/65">Une expérience adaptée aux usages quotidiens et au mobile.</p>
               </div>
             </div>
@@ -180,7 +179,7 @@ export default function HomePage() {
                     <div>
                       <p className="text-xs text-[#7A8780]">par {service.artisan_username}</p>
                       <p className="mt-1 font-black text-[#0B6B50]">
-                        {service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatPrice(service.prix)} FCFA`}
+                        {service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatServiceMoney(service)}`}
                       </p>
                     </div>
                     {service.moyenne_avis && <span className="rounded-full bg-[#FFF7DD] px-2.5 py-1 text-xs font-bold text-[#9A6B00]">★ {service.moyenne_avis}</span>}

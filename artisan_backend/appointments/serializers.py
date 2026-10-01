@@ -17,6 +17,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
     )
     service_id = serializers.IntegerField(source='service.id', read_only=True)
     service_titre = serializers.CharField(source='service.titre', read_only=True)
+    service_currency_code = serializers.CharField(source='service.artisan.currency_code', read_only=True)
     service_prix = serializers.DecimalField(
         source='service.prix',
         max_digits=10,
@@ -37,7 +38,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         model = Appointment
         fields = [
             'id', 'client', 'client_nom', 'service', 'service_id', 'service_titre',
-            'service_prix', 'service_duree_minutes', 'artisan_nom', 'date_rdv',
+            'service_prix', 'service_currency_code', 'service_duree_minutes', 'artisan_nom', 'date_rdv',
             'date_fin', 'statut', 'statut_label', 'transitions_autorisees',
             'peut_annuler', 'commentaires', 'lieu_intervention',
             'intervention_adresse', 'intervention_latitude', 'intervention_longitude',

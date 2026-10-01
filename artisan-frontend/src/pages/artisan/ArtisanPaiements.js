@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { formatMoney } from '../../utils/currency';
 
 const METHODS = [
   ['cash', 'Espèces'],
@@ -12,10 +13,8 @@ const METHODS = [
   ['other', 'Autre'],
 ];
 
-function money(value) {
-  return value == null
-    ? 'Montant indisponible'
-    : `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`;
+function money(value, currency = 'XOF') {
+  return value == null ? 'Montant indisponible' : formatMoney(value, currency);
 }
 
 function apiError(error) {
@@ -74,7 +73,7 @@ export default function ArtisanPaiements() {
     }
 
     const question = statut === 'paid'
-      ? `Confirmer que vous avez reçu ${money(row.amount)} pour cette prestation ?`
+      ? `Confirmer que vous avez reçu ${money(row.amount, row.currency)} pour cette prestation ?`
       : 'Confirmer que vous n’avez pas encore reçu le règlement ?';
     if (!window.confirm(question)) return;
 
@@ -135,7 +134,7 @@ export default function ArtisanPaiements() {
                     <p className="text-xs text-gray-500">Rendez-vous #{row.appointment_id}</p>
                     {row.quote_reference && <p className="text-xs text-gray-500">Devis : {row.quote_reference}</p>}
                   </div>
-                  <strong className="text-lg">{money(row.amount)}</strong>
+                  <strong className="text-lg">{money(row.amount, row.currency)}</strong>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">

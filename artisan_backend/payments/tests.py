@@ -253,6 +253,29 @@ class ManualPostServicePaymentTests(APITestCase):
         self.assertEqual(payment.methode_paiement, 'wave')
         self.assertEqual(payment.payment_reference, 'WAVE-TEST-123')
 
+    def test_completion_preview_and_payment_use_artisan_currency(self):
+        self.artisan.country_code = 'FR'
+        self.artisan.country_calling_code = '+33'
+        self.artisan.currency_code = 'EUR'
+        self.artisan.save(update_fields=['country_code', 'country_calling_code', 'currency_code'])
+        self.appointment.statut = 'en_cours'
+        self.appointment.started_at = timezone.now()
+        self.appointment.save(update_fields=['statut', 'started_at', 'updated_at'])
+        self.client.force_authenticate(self.artisan)
+
+        preview = self.client.get(f'/api/payments/complete-service/{self.appointment.id}/')
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertEqual(preview.data['currency'], 'EUR')
+
+        completed = self.client.post(
+            f'/api/payments/complete-service/{self.appointment.id}/',
+            {'statut': 'paid', 'methode_paiement': 'cash'},
+            format='json',
+        )
+        self.assertEqual(completed.status_code, status.HTTP_200_OK)
+        self.assertEqual(completed.data['payment']['currency'], 'EUR')
+        self.assertEqual(Payment.objects.get(appointment=self.appointment).currency, 'EUR')
+
     def test_invalid_payment_form_does_not_complete_service(self):
         self.appointment.statut = 'en_cours'
         self.appointment.started_at = timezone.now()

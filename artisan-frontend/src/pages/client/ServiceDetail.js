@@ -6,6 +6,7 @@ import PublicHeader from '../../components/PublicHeader';
 import AddressAutocomplete from '../../components/AddressAutocomplete';
 import { reverseGeocode } from '../../utils/location';
 import { getUserRole, isAuthenticated } from '../../utils/auth';
+import { formatServiceMoney, serviceOriginalMoney, servicePriceWasConverted } from '../../utils/currency';
 
 function apiErrorMessage(error, fallback) {
   const data = error?.response?.data;
@@ -17,8 +18,6 @@ function apiErrorMessage(error, fallback) {
   const first = Object.values(data).flat()[0];
   return typeof first === 'string' ? first : fallback;
 }
-
-const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
 
 function interventionZoneLabel(service) {
@@ -213,7 +212,7 @@ export default function ServiceDetail({ publicMode = false }) {
 
   const priceLabel = service.mode_tarification === 'sur_devis'
     ? 'Sur devis'
-    : `${service.mode_tarification === 'a_partir_de' ? 'À partir de ' : ''}${formatPrice(service.prix)} FCFA`;
+    : `${service.mode_tarification === 'a_partir_de' ? 'À partir de ' : ''}${formatServiceMoney(service)}`;
 
   const content = (
     <div className={publicMode ? 'mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8' : 'mx-auto max-w-6xl'}>
@@ -244,7 +243,15 @@ export default function ServiceDetail({ publicMode = false }) {
             </div>
 
             <div className="mt-6 flex items-end justify-between border-t border-black/5 pt-5">
-              <div><p className="text-xs font-semibold text-[#829087]">Tarif</p><p className="mt-1 text-2xl font-black text-[#0B6B50]">{priceLabel}</p></div>
+              <div>
+                <p className="text-xs font-semibold text-[#829087]">Tarif</p>
+                <p className="mt-1 text-2xl font-black text-[#0B6B50]">{priceLabel}</p>
+                {servicePriceWasConverted(service) && (
+                  <p className="mt-1 text-xs font-semibold text-[#7A8780]">
+                    Prix de l’artisan : {serviceOriginalMoney(service)} · conversion indicative
+                  </p>
+                )}
+              </div>
               {connectedClient ? (
                 <button onClick={toggleFavori} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold ${service.is_favori ? 'bg-[#FFF0EE] text-[#B74339]' : 'bg-[#F2F5F3] text-[#526159]'}`}><AppIcon name="heart" className="h-4 w-4" />{service.is_favori ? 'Enregistré' : 'Favori'}</button>
               ) : (

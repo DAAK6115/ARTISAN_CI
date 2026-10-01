@@ -5,9 +5,11 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 
+from integrations.phones import example_phone_national
+
 logger = logging.getLogger(__name__)
 
-_CACHE_KEY = 'artisan_ci:reference:countries:v1'
+_CACHE_KEY = 'artisan_ci:reference:countries:v2'
 _FALLBACK_COUNTRIES = [
     {
         'code': 'CI',
@@ -15,6 +17,7 @@ _FALLBACK_COUNTRIES = [
         'dial_code': '+225',
         'currency': 'XOF',
         'flag': '🇨🇮',
+        'phone_example': '01 23 45 67 89',
     }
 ]
 
@@ -144,6 +147,15 @@ def _from_countriesnow():
     return countries
 
 
+
+def _with_phone_examples(countries):
+    enriched = []
+    for item in countries:
+        copy = dict(item)
+        copy['phone_example'] = copy.get('phone_example') or example_phone_national(copy.get('code'))
+        enriched.append(copy)
+    return enriched
+
 def get_countries(*, force=False):
     if not force:
         cached = cache.get(_CACHE_KEY)
@@ -163,12 +175,13 @@ def get_countries(*, force=False):
                     if current is None or (not current.get('currency') and item.get('currency')):
                         unique[code] = item
                 countries = sorted(unique.values(), key=lambda item: (item.get('name') or item['code']).casefold())
+                countries = _with_phone_examples(countries)
                 cache.set(_CACHE_KEY, countries, settings.COUNTRY_REFERENCE_CACHE_SECONDS)
                 return countries
         except Exception:
             logger.warning('Fournisseur de pays indisponible: %s', provider.__name__, exc_info=True)
 
-    return list(_FALLBACK_COUNTRIES)
+    return _with_phone_examples(_FALLBACK_COUNTRIES)
 
 
 def get_country(code):

@@ -354,3 +354,15 @@ RESTCOUNTRIES_API_KEY = os.getenv("RESTCOUNTRIES_API_KEY", "")
 RESTCOUNTRIES_V5_BASE_URL = os.getenv("RESTCOUNTRIES_V5_BASE_URL", "https://api.restcountries.com")
 RESTCOUNTRIES_LEGACY_URL = os.getenv("RESTCOUNTRIES_LEGACY_URL", "https://restcountries.com/v3.1/all")
 
+
+# Currency conversion (INT 1 client display)
+CURRENCY_API_PRIMARY_TEMPLATE = os.getenv(
+    'CURRENCY_API_PRIMARY_TEMPLATE',
+    'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base}.min.json',
+)
+CURRENCY_API_FALLBACK_TEMPLATE = os.getenv(
+    'CURRENCY_API_FALLBACK_TEMPLATE',
+    'https://latest.currency-api.pages.dev/v1/currencies/{base}.min.json',
+)
+CURRENCY_API_TIMEOUT_SECONDS = int(os.getenv('CURRENCY_API_TIMEOUT_SECONDS', '5'))
+CURRENCY_API_CACHE_SECONDS = int(os.getenv('CURRENCY_API_CACHE_SECONDS', '21600'))

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { formatMoney } from '../../utils/currency';
 
 const STATUS = {
   unpaid: ['Non payé', 'bg-amber-100 text-amber-800'],
   paid: ['Payé', 'bg-green-100 text-green-800'],
 };
 
-function money(value) {
-  return `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`;
+function money(value, currency = 'XOF') {
+  return formatMoney(value, currency);
 }
 
 function apiError(error) {
@@ -113,7 +114,7 @@ export default function PaiementsPage() {
                   <div className="flex flex-wrap gap-2"><span className={`${style} px-3 py-1 rounded-full text-xs h-fit`}>{label}</span>{dispute && <><span className="h-fit rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-700">Contesté · {dispute.status_label}</span><button onClick={() => replyDispute(dispute)} className="text-xs font-bold text-[#3565A8] underline">Ajouter un message</button></>}</div>
                 </div>
 
-                <p className="mt-3 text-xl font-bold">{money(payment.montant)}</p>
+                <p className="mt-3 text-xl font-bold">{money(payment.montant, payment.currency)}</p>
                 {payment.statut === 'paid' && (
                   <>
                     <p className="text-sm text-gray-600">Mode : {payment.methode_paiement_label || payment.methode_paiement}</p>

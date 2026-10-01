@@ -1,17 +1,16 @@
 import math
-import re
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Avg, Count
 from rest_framework import serializers
 
 from common.validators import validate_image_upload
+from integrations.phones import InvalidPhoneNumber, format_phone_national, normalize_phone_number
 from services.models import Service
 from .models import Portfolio, Realisation
 
 
 _COORDINATE_QUANTUM = Decimal('0.000001')
-_E164_RE = re.compile(r'^\+[1-9]\d{7,14}$')
 
 
 class RealisationSerializer(serializers.ModelSerializer):
@@ -37,6 +36,7 @@ class PortfolioSerializer(serializers.ModelSerializer):
     artisan_country_code = serializers.CharField(source='artisan.country_code', read_only=True)
     artisan_country_calling_code = serializers.CharField(source='artisan.country_calling_code', read_only=True)
     artisan_currency_code = serializers.CharField(source='artisan.currency_code', read_only=True)
+    whatsapp_national = serializers.SerializerMethodField()
     service_categories = serializers.SerializerMethodField()
     service_category_labels = serializers.SerializerMethodField()
     service_titles = serializers.SerializerMethodField()
@@ -67,7 +67,7 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'id', 'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
             'artisan_verification_status', 'artisan_country_code', 'artisan_country_calling_code',
             'artisan_currency_code', 'bio', 'photo_profil', 'photo_couverture',
-            'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
+            'site_web', 'facebook', 'whatsapp', 'whatsapp_national', 'localisation', 'latitude',
             'longitude', 'visible', 'realisations', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
             'route_distance_km', 'route_duration_minutes', 'distance_source',
@@ -79,7 +79,7 @@ class PortfolioSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
             'artisan_verification_status', 'artisan_country_code', 'artisan_country_calling_code',
-            'artisan_currency_code', 'service_categories',
+            'artisan_currency_code', 'whatsapp_national', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
             'route_distance_km', 'route_duration_minutes', 'distance_source',
             'rating_average', 'review_count', 'supports_home_service',
@@ -191,6 +191,9 @@ class PortfolioSerializer(serializers.ModelSerializer):
     def get_artisan_verified(self, obj):
         return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')
 
+    def get_whatsapp_national(self, obj):
+        return format_phone_national(obj.whatsapp, country_code=obj.artisan.country_code)
+
     def validate_photo_profil(self, value):
         if value is None:
             return value
@@ -217,29 +220,18 @@ class PortfolioSerializer(serializers.ModelSerializer):
         return self._normalize_coordinate(value, -180, 180, 'Longitude')
 
     def validate_whatsapp(self, value):
-        """Normalise un numéro international vers une forme E.164.
-
-        Exemples acceptés :
-        - +225 01 02 03 04 05 -> +2250102030405
-        - +33 6 12 34 56 78  -> +33612345678
-        - 00 1 415 555 2671   -> +14155552671
-
-        Sans indicatif pays, un numéro local est ambigu dans une plateforme
-        internationale : il est donc volontairement refusé.
-        """
         if value in (None, ''):
             return value
 
-        raw = str(value).strip()
-        if raw.startswith('00'):
-            raw = f'+{raw[2:]}'
+        country_code = 'CI'
+        if self.instance is not None and getattr(self.instance, 'artisan_id', None):
+            country_code = getattr(self.instance.artisan, 'country_code', None) or country_code
+        else:
+            request = self.context.get('request') if hasattr(self, 'context') else None
+            user = getattr(request, 'user', None)
+            country_code = getattr(user, 'country_code', None) or country_code
 
-        # Tolère l'affichage humain : espaces, tirets, points et parenthèses.
-        cleaned = re.sub(r'[\s().-]', '', raw)
-
-        if not _E164_RE.fullmatch(cleaned):
-            raise serializers.ValidationError(
-                'Numéro WhatsApp invalide. Utilisez le format international '
-                '(+ indicatif pays + numéro), par exemple +2250102030405.'
-            )
-        return cleaned
+        try:
+            return normalize_phone_number(value, country_code=country_code)
+        except InvalidPhoneNumber as exc:
+            raise serializers.ValidationError(str(exc)) from exc

@@ -9,8 +9,8 @@ import ReportButton from '../components/ReportButton';
 import { getUserRole, isAuthenticated } from '../utils/auth';
 import useAutoRefresh from '../hooks/useAutoRefresh';
 import { countryDisplayName, countryFlag } from '../utils/country';
+import { formatServiceMoney } from '../utils/currency';
 
-const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
 
 function serviceZoneLabel(service) {
@@ -113,7 +113,7 @@ export default function ArtisanPublicProfilePage() {
           <div className="space-y-6">
             <section className="rounded-[30px] border border-black/5 bg-white p-5 shadow-[0_12px_35px_rgba(20,38,30,0.05)] sm:p-6">
               <div className="flex items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-[#0B6B50]">Prestations</p><h2 className="mt-1 text-xl font-black">Ce que propose {portfolio.artisan_nom}</h2></div><span className="text-sm font-bold text-[#718078]">{services.length}</span></div>
-              {services.length === 0 ? <p className="mt-5 rounded-2xl bg-[#F8F9F7] p-4 text-sm text-[#718078]">Aucune prestation active publiée pour le moment.</p> : <div className="mt-5 grid gap-4 sm:grid-cols-2">{services.map((service) => <Link key={service.id} to={clientConnected ? `/client/services/${service.id}` : `/prestations/${service.id}`} className="group rounded-3xl border border-black/5 bg-[#FBFCFB] p-4 hover:border-[#0B6B50]/20 hover:bg-white hover:shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-[#829087]">{service.categorie_label || service.categorie}</p><h3 className="mt-1 font-black group-hover:text-[#0B6B50]">{service.titre}</h3></div>{service.moyenne_avis && <span className="text-xs font-black text-[#9A6B00]">★ {service.moyenne_avis}</span>}</div><p className="mt-3 line-clamp-2 text-sm leading-5 text-[#66736D]">{service.description}</p><p className="mt-3 text-xs font-bold text-[#526159]">📍 {serviceZoneLabel(service)}</p><p className="mt-3 font-black text-[#0B6B50]">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatPrice(service.prix)} FCFA`}</p></Link>)}</div>}
+              {services.length === 0 ? <p className="mt-5 rounded-2xl bg-[#F8F9F7] p-4 text-sm text-[#718078]">Aucune prestation active publiée pour le moment.</p> : <div className="mt-5 grid gap-4 sm:grid-cols-2">{services.map((service) => <Link key={service.id} to={clientConnected ? `/client/services/${service.id}` : `/prestations/${service.id}`} className="group rounded-3xl border border-black/5 bg-[#FBFCFB] p-4 hover:border-[#0B6B50]/20 hover:bg-white hover:shadow-lg"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-[#829087]">{service.categorie_label || service.categorie}</p><h3 className="mt-1 font-black group-hover:text-[#0B6B50]">{service.titre}</h3></div>{service.moyenne_avis && <span className="text-xs font-black text-[#9A6B00]">★ {service.moyenne_avis}</span>}</div><p className="mt-3 line-clamp-2 text-sm leading-5 text-[#66736D]">{service.description}</p><p className="mt-3 text-xs font-bold text-[#526159]">📍 {serviceZoneLabel(service)}</p><p className="mt-3 font-black text-[#0B6B50]">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatServiceMoney(service)}`}</p></Link>)}</div>}
             </section>
 
             <section className="rounded-[30px] border border-black/5 bg-white p-5 shadow-[0_12px_35px_rgba(20,38,30,0.05)] sm:p-6">

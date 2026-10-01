@@ -6,6 +6,7 @@ import LocationActions from '../../components/LocationActions';
 import AddressAutocomplete from '../../components/AddressAutocomplete';
 import { reverseGeocode } from '../../utils/location';
 import CountrySelect from '../../components/CountrySelect';
+import InternationalPhoneInput from '../../components/InternationalPhoneInput';
 
 export default function ArtisanProfileEditPage() {
   const [form, setForm] = useState({
@@ -39,7 +40,7 @@ export default function ArtisanProfileEditPage() {
         bio: data.bio || '',
         site_web: data.site_web || '',
         facebook: data.facebook || '',
-        whatsapp: data.whatsapp || '',
+        whatsapp: data.whatsapp_national || data.whatsapp || '',
         localisation: data.localisation || '',
         photo_profil: null,
     photo_couverture: null,
@@ -126,10 +127,10 @@ export default function ArtisanProfileEditPage() {
     }
 
     try {
-      await Promise.all([
-        axios.patch('/portfolio/me/', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
-        axios.put('/accounts/profile/update/', { country_code: account.country_code }),
-      ]);
+      // Le pays doit être enregistré avant le WhatsApp : la validation du numéro
+      // local utilise le pays du compte comme région de référence.
+      await axios.put('/accounts/profile/update/', { country_code: account.country_code });
+      await axios.patch('/portfolio/me/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
       setMessage('Profil professionnel mis à jour.');
       await load();
     } catch (error) {
@@ -161,6 +162,15 @@ export default function ArtisanProfileEditPage() {
             <textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} maxLength={1500} className="mt-1 min-h-28 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" placeholder="Présentez votre métier, votre expérience et votre façon de travailler." />
           </label>
 
+          <CountrySelect
+            value={account.country_code}
+            onChange={(country_code) => {
+              setAccount({ country_code });
+              setForm((current) => ({ ...current, whatsapp: '' }));
+            }}
+            label="Pays d’activité principal"
+          />
+
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-bold">
               Localisation
@@ -182,22 +192,17 @@ export default function ArtisanProfileEditPage() {
                 />
               </div>
             </label>
-            <label className="text-sm font-bold">
-              WhatsApp
-              <input
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
+            <div>
+              <InternationalPhoneInput
+                countryCode={account.country_code}
                 value={form.whatsapp}
-                onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-                className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal"
-                placeholder="Ex. +225 01 02 03 04 05"
+                onChange={(whatsapp) => setForm((current) => ({ ...current, whatsapp }))}
+                label="WhatsApp"
+                placeholder="Ex. 01 40 93 75 04"
+                helpText="Saisissez le numéro local. L’indicatif du pays sera appliqué automatiquement et le numéro sera stocké en E.164."
               />
-              <span className="mt-1 block text-xs font-normal text-[#829087]">Format international : + indicatif pays + numéro. Ex. +225…, +33…, +1…. Espaces et tirets acceptés.</span>
-            </label>
+            </div>
           </div>
-
-          <CountrySelect value={account.country_code} onChange={(country_code) => setAccount({ country_code })} label="Pays d’activité principal" />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-bold">Site web<input type="url" value={form.site_web} onChange={(e) => setForm({ ...form, site_web: e.target.value })} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" /></label>

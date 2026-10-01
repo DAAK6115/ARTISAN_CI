@@ -52,7 +52,10 @@ class CustomUser(AbstractUser):
         ("rejected", "Refusé"),
     )
 
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
     numero_momo = models.CharField(max_length=20, blank=True, null=True)
+    city = models.CharField(max_length=120, blank=True)
+    profile_photo = models.ImageField(upload_to="client_profiles/", blank=True, null=True)
     qr_wave = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
     country_code = models.CharField(max_length=2, default="CI", db_index=True)
     country_calling_code = models.CharField(max_length=12, default="+225")

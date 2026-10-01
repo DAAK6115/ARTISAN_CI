@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import Payment, PaymentAttempt, Quote, QuoteLine
+from .models import Payment, Quote, QuoteLine
 
 
 class QuoteLineSerializer(serializers.ModelSerializer):
@@ -30,6 +30,7 @@ class QuoteSerializer(serializers.ModelSerializer):
     client_username = serializers.CharField(source='client.username', read_only=True)
     service_titre = serializers.CharField(source='appointment.service.titre', read_only=True)
     appointment_status = serializers.CharField(source='appointment.statut', read_only=True, allow_null=True)
+    currency = serializers.CharField(source='appointment.service.artisan.currency_code', read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -37,7 +38,7 @@ class QuoteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'appointment', 'artisan', 'artisan_username', 'client',
             'client_username', 'service_titre', 'appointment_status', 'status', 'notes',
-            'valid_until', 'subtotal', 'discount_amount', 'total', 'sent_at',
+            'valid_until', 'subtotal', 'discount_amount', 'total', 'currency', 'sent_at',
             'accepted_at', 'rejected_at', 'created_at', 'updated_at', 'is_expired',
             'lines',
         ]
@@ -104,52 +105,50 @@ class QuoteSerializer(serializers.ModelSerializer):
         return instance
 
 
-class PaymentAttemptSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PaymentAttempt
-        fields = [
-            'id', 'provider_reference', 'status', 'gateway', 'checkout_url',
-            'created_at', 'updated_at', 'completed_at',
-        ]
-        read_only_fields = fields
-
-
 class PaymentSerializer(serializers.ModelSerializer):
     client = serializers.StringRelatedField(read_only=True)
     service_titre = serializers.CharField(source='service.titre', read_only=True)
     artisan_username = serializers.CharField(source='service.artisan.username', read_only=True)
     quote_reference = serializers.CharField(source='quote.reference', read_only=True, allow_null=True)
     appointment_status = serializers.CharField(source='appointment.statut', read_only=True, allow_null=True)
-    methode_paiement_label = serializers.CharField(source='get_methode_paiement_display', read_only=True, allow_null=True)
-    declared_by_username = serializers.CharField(source='declared_by.username', read_only=True, allow_null=True)
-    attempts = PaymentAttemptSerializer(many=True, read_only=True)
+    currency = serializers.CharField(source='appointment.service.artisan.currency_code', read_only=True)
+    methode_paiement_label = serializers.CharField(
+        source='get_methode_paiement_display',
+        read_only=True,
+        allow_null=True,
+    )
+    declared_by_username = serializers.CharField(
+        source='declared_by.username',
+        read_only=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = Payment
         fields = '__all__'
-        read_only_fields = [field.name for field in Payment._meta.fields] + ['attempts']
+        read_only_fields = [field.name for field in Payment._meta.fields]
 
 
 class PaymentDeclarationSerializer(serializers.Serializer):
     appointment_id = serializers.IntegerField(min_value=1)
     statut = serializers.ChoiceField(choices=['paid', 'unpaid'])
     methode_paiement = serializers.ChoiceField(
-        choices=[
-            ('cash', 'Espèces'),
-            ('bank_transfer', 'Virement bancaire'),
-            ('other', 'Autre'),
-        ],
+        choices=Payment.METHOD_CHOICES,
         required=False,
         allow_null=True,
     )
-    payment_reference = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    payment_reference = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=100,
+    )
     notes = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
     def validate(self, attrs):
         if attrs['statut'] == 'paid' and not attrs.get('methode_paiement'):
-            raise serializers.ValidationError({
-                'methode_paiement': 'La méthode est requise pour un règlement manuel.'
-            })
+            raise serializers.ValidationError(
+                {'methode_paiement': 'La méthode de paiement est requise lorsque vous déclarez le règlement comme payé.'}
+            )
         if attrs['statut'] == 'unpaid':
             attrs['methode_paiement'] = None
             attrs['payment_reference'] = ''

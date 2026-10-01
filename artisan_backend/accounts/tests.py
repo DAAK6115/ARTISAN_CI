@@ -198,3 +198,125 @@ class CountryInternationalizationTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("country_code", response.data)
+    @patch("accounts.serializers.get_country")
+    def test_registration_normalizes_local_phone_with_selected_country(self, mocked):
+        mocked.return_value = self.country_fr
+        response = self.client.post(
+            "/api/accounts/register/",
+            {
+                "email": "phone-fr@example.com",
+                "username": "phone-fr",
+                "password": "StrongPassword!2026",
+                "role": "client",
+                "country_code": "FR",
+                "numero_momo": "06 12 34 56 78",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        user = CustomUser.objects.get(email="phone-fr@example.com")
+        self.assertEqual(user.numero_momo, "+33612345678")
+
+    @patch("accounts.serializers.get_country")
+    def test_profile_update_normalizes_local_phone_with_new_country(self, mocked):
+        mocked.return_value = self.country_fr
+        user = CustomUser.objects.create_user(
+            email="profile-phone@example.com",
+            username="profile-phone",
+            password="StrongPassword!2026",
+            role="client",
+        )
+        self.client.force_authenticate(user)
+        response = self.client.put(
+            "/api/accounts/profile/update/",
+            {"country_code": "FR", "numero_momo": "06 12 34 56 78"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        user.refresh_from_db()
+        self.assertEqual(user.country_code, "FR")
+        self.assertEqual(user.numero_momo, "+33612345678")
+
+    @patch("accounts.serializers.get_country")
+    def test_invalid_phone_is_rejected(self, mocked):
+        mocked.return_value = self.country_fr
+        user = CustomUser.objects.create_user(
+            email="invalid-phone@example.com",
+            username="invalid-phone",
+            password="StrongPassword!2026",
+            role="client",
+        )
+        self.client.force_authenticate(user)
+        response = self.client.put(
+            "/api/accounts/profile/update/",
+            {"country_code": "FR", "numero_momo": "123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("numero_momo", response.data)
+
+
+
+class ClientProfileEnrichmentTests(APITestCase):
+    def test_country_reference_includes_phone_examples(self):
+        from integrations.countries import _with_phone_examples
+        countries = _with_phone_examples([
+            {"code": "FR", "name": "France", "dial_code": "+33", "currency": "EUR", "flag": "🇫🇷"},
+            {"code": "CI", "name": "Côte d’Ivoire", "dial_code": "+225", "currency": "XOF", "flag": "🇨🇮"},
+        ])
+        self.assertTrue(countries[0].get("phone_example"))
+        self.assertTrue(countries[1].get("phone_example"))
+
+    @patch("accounts.serializers.get_country")
+    def test_client_can_update_extended_profile_fields(self, mocked):
+        mocked.return_value = {
+            "code": "FR", "name": "France", "dial_code": "+33", "currency": "EUR", "flag": "🇫🇷"
+        }
+        user = CustomUser.objects.create_user(
+            email="client-profile@example.com",
+            username="client-profile",
+            password="StrongPassword!2026",
+            role="client",
+        )
+        self.client.force_authenticate(user)
+        response = self.client.put(
+            "/api/accounts/profile/update/",
+            {
+                "username": "client-renamed",
+                "first_name": "Awa",
+                "last_name": "Koné",
+                "email": "awa.kone@example.com",
+                "country_code": "FR",
+                "city": "Paris",
+                "phone_number": "06 12 34 56 78",
+                "numero_momo": "06 98 76 54 32",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        user.refresh_from_db()
+        self.assertEqual(user.first_name, "Awa")
+        self.assertEqual(user.last_name, "Koné")
+        self.assertEqual(user.email, "awa.kone@example.com")
+        self.assertEqual(user.city, "Paris")
+        self.assertEqual(user.phone_number, "+33612345678")
+        self.assertEqual(user.numero_momo, "+33698765432")
+        self.assertEqual(user.currency_code, "EUR")
+
+    def test_client_profile_rejects_duplicate_email(self):
+        CustomUser.objects.create_user(
+            email="existing@example.com", username="existing-user",
+            password="StrongPassword!2026", role="client",
+        )
+        user = CustomUser.objects.create_user(
+            email="other@example.com", username="other-user",
+            password="StrongPassword!2026", role="client",
+        )
+        self.client.force_authenticate(user)
+        response = self.client.put(
+            "/api/accounts/profile/update/",
+            {"email": "existing@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data)

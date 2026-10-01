@@ -302,7 +302,7 @@ class ClientProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(UserProfileSerializer(request.user).data)
+        return Response(UserProfileSerializer(request.user, context={"request": request}).data)
 
     def put(self, request):
         serializer = UpdateProfileSerializer(
@@ -312,7 +312,7 @@ class ClientProfileView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        return Response(UserProfileSerializer(request.user, context={"request": request}).data)
 
 
 class GetUserIdByUsernameView(APIView):

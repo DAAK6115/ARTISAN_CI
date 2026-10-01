@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
 import LocationActions from '../../components/LocationActions';
+import { formatMoney } from '../../utils/currency';
 
 const WEEKDAYS = [
   [0, 'Lundi'],
@@ -37,57 +38,6 @@ const ACTIONS = {
   annule_artisan: ['Annuler', 'bg-red-600 hover:bg-red-700'],
 };
 
-const PAYMENT_METHODS = [
-  { value: 'wave', label: 'Wave' },
-  { value: 'orange_money', label: 'Orange Money' },
-  { value: 'mtn_money', label: 'MTN Money' },
-  { value: 'moov_money', label: 'Moov Money' },
-  { value: 'cash', label: 'Espèces' },
-  { value: 'bank_transfer', label: 'Virement bancaire' },
-  { value: 'other', label: 'Autre' },
-];
-
-const STATUS_META = {
-  en_attente: { label: 'Demande reçue', badge: 'bg-[#FFF4DE] text-[#9A5D00]', dot: 'bg-[#E7A326]' },
-  accepte: { label: 'Accepté', badge: 'bg-[#EAF4F0] text-[#0B6B50]', dot: 'bg-[#0B6B50]' },
-  confirme: { label: 'Confirmé', badge: 'bg-[#EAF4F0] text-[#0B6B50]', dot: 'bg-[#0B6B50]' },
-  en_route: { label: 'En route', badge: 'bg-[#EAF5FF] text-[#1269A7]', dot: 'bg-[#2A88C9]' },
-  en_cours: { label: 'En cours', badge: 'bg-[#EEF0FF] text-[#4854B8]', dot: 'bg-[#5965D8]' },
-  termine: { label: 'Terminé · attente client', badge: 'bg-[#F4EDFF] text-[#7650A8]', dot: 'bg-[#8660B6]' },
-  effectue: { label: 'Clôturé', badge: 'bg-[#EDF1EE] text-[#526159]', dot: 'bg-[#718078]' },
-  refuse: { label: 'Refusé', badge: 'bg-[#FFF0EE] text-[#B23A31]', dot: 'bg-[#D84A3A]' },
-  annule_client: { label: 'Annulé par le client', badge: 'bg-[#FFF0EE] text-[#B23A31]', dot: 'bg-[#D84A3A]' },
-  annule_artisan: { label: 'Annulé par vous', badge: 'bg-[#FFF0EE] text-[#B23A31]', dot: 'bg-[#D84A3A]' },
-  annule: { label: 'Annulé', badge: 'bg-[#FFF0EE] text-[#B23A31]', dot: 'bg-[#D84A3A]' },
-};
-
-const ACTIVE_STATUSES = new Set(['en_attente', 'accepte', 'confirme', 'en_route', 'en_cours', 'termine']);
-const HISTORY_STATUSES = new Set(['effectue', 'refuse', 'annule_client', 'annule_artisan', 'annule']);
-
-function dayKey(date) {
-  const value = new Date(date);
-  return `${value.getFullYear()}-${value.getMonth()}-${value.getDate()}`;
-}
-
-function formatAgendaDate(date) {
-  const value = new Date(date);
-  return {
-    day: new Intl.DateTimeFormat('fr-FR', { day: '2-digit' }).format(value),
-    month: new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(value).replace('.', '').toUpperCase(),
-    weekday: new Intl.DateTimeFormat('fr-FR', { weekday: 'short' }).format(value).replace('.', ''),
-    time: new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(value),
-  };
-}
-
-function durationLabel(start, end) {
-  const diff = Math.max(0, new Date(end) - new Date(start));
-  const minutes = Math.round(diff / 60000);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours} h ${rest.toString().padStart(2, '0')}` : `${hours} h`;
-}
-
 function apiErrorMessage(error, fallback) {
   const data = error?.response?.data;
   if (!data) return fallback;
@@ -99,7 +49,6 @@ function apiErrorMessage(error, fallback) {
 
 export default function ArtisanAppointments() {
   const [activeTab, setActiveTab] = useState('appointments');
-  const [agendaFilter, setAgendaFilter] = useState('active');
   const [appointments, setAppointments] = useState([]);
   const [availabilities, setAvailabilities] = useState([]);
   const [timeOffs, setTimeOffs] = useState([]);
@@ -296,212 +245,93 @@ export default function ArtisanAppointments() {
     }
   };
 
-  const agendaStats = useMemo(() => {
-    const today = dayKey(new Date());
-    return {
-      today: appointments.filter((item) => dayKey(item.date_rdv) === today && ACTIVE_STATUSES.has(item.statut)).length,
-      pending: appointments.filter((item) => item.statut === 'en_attente').length,
-      inProgress: appointments.filter((item) => ['en_route', 'en_cours'].includes(item.statut)).length,
-      active: appointments.filter((item) => ACTIVE_STATUSES.has(item.statut)).length,
-    };
-  }, [appointments]);
-
-  const visibleAppointments = useMemo(() => {
-    const items = [...appointments].sort((a, b) => {
-      const diff = new Date(a.date_rdv) - new Date(b.date_rdv);
-      return agendaFilter === 'history' ? -diff : diff;
-    });
-    if (agendaFilter === 'active') return items.filter((item) => ACTIVE_STATUSES.has(item.statut));
-    if (agendaFilter === 'history') return items.filter((item) => HISTORY_STATUSES.has(item.statut));
-    return items;
-  }, [appointments, agendaFilter]);
-
-  const paymentMethods = completionPreview?.payment_methods?.length
-    ? completionPreview.payment_methods
-    : PAYMENT_METHODS;
-
   return (
     <div className="mx-auto max-w-[1400px] p-4 pb-28 sm:p-6 lg:pb-8">
-      <div className="mb-6 rounded-[28px] border border-black/5 bg-white p-5 shadow-[0_14px_40px_rgba(25,44,34,0.06)] sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Organisation</p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-[#111815]">Agenda & disponibilités</h2>
-            <p className="mt-2 max-w-2xl text-sm text-[#66736D]">Suivez vos interventions, leurs étapes et vos créneaux disponibles depuis un seul espace.</p>
-          </div>
-          <div className="inline-flex w-full rounded-2xl bg-[#F3F6F4] p-1 sm:w-auto">
-            <button
-              onClick={() => setActiveTab('appointments')}
-              className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-black transition sm:flex-none ${activeTab === 'appointments' ? 'bg-white text-[#0B6B50] shadow-sm' : 'text-[#66736D]'}`}
-            >
-              Agenda
-            </button>
-            <button
-              onClick={() => setActiveTab('schedule')}
-              className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-black transition sm:flex-none ${activeTab === 'schedule' ? 'bg-white text-[#0B6B50] shadow-sm' : 'text-[#66736D]'}`}
-            >
-              Disponibilités
-            </button>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+        <div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#0B6B50]">Organisation</p><h2 className="mt-2 text-3xl font-black tracking-tight">Agenda & disponibilités</h2></div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('appointments')}
+            className={`px-3 py-2 rounded text-sm ${activeTab === 'appointments' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+          >
+            Rendez-vous
+          </button>
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`px-3 py-2 rounded text-sm ${activeTab === 'schedule' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+          >
+            Mes disponibilités
+          </button>
         </div>
-
-        {activeTab === 'appointments' ? (
-          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {[
-              ['Aujourd’hui', agendaStats.today, 'Interventions du jour'],
-              ['À traiter', agendaStats.pending, 'Demandes reçues'],
-              ['En déplacement', agendaStats.inProgress, 'En route / en cours'],
-              ['Actifs', agendaStats.active, 'Rendez-vous ouverts'],
-            ].map(([label, value, hint]) => (
-              <div key={label} className="rounded-2xl border border-black/5 bg-[#FBFCFB] p-4">
-                <p className="text-2xl font-black text-[#111815]">{value}</p>
-                <p className="mt-1 text-sm font-black text-[#334139]">{label}</p>
-                <p className="mt-1 text-xs text-[#829087]">{hint}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
       </div>
 
-      {message && (
-        <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold ${message.startsWith('❌') ? 'border-[#F0CBC7] bg-[#FFF5F3] text-[#A63D34]' : 'border-[#CFE5DB] bg-[#F2FAF6] text-[#0B6B50]'}`}>
-          {message}
-        </div>
-      )}
+      {message && <p className="text-sm mb-4 text-blue-600">{message}</p>}
 
       {loading ? (
-        <div className="rounded-[24px] border border-black/5 bg-white p-8 text-center text-sm text-[#718078]">Chargement de votre agenda…</div>
+        <p>Chargement...</p>
       ) : activeTab === 'appointments' ? (
-        <div>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {[
-              ['active', 'À venir'],
-              ['history', 'Historique'],
-              ['all', 'Tous'],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAgendaFilter(value)}
-                className={`rounded-full border px-4 py-2 text-xs font-black transition ${agendaFilter === value ? 'border-[#0B6B50] bg-[#0B6B50] text-white' : 'border-[#DDE5E0] bg-white text-[#526159] hover:border-[#9DB5A8]'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {visibleAppointments.length === 0 ? (
-            <div className="rounded-[28px] border border-dashed border-[#C9D6CF] bg-[#FBFCFB] p-10 text-center">
-              <p className="text-lg font-black text-[#334139]">Aucun rendez-vous dans cette vue</p>
-              <p className="mt-2 text-sm text-[#718078]">Vos prochaines demandes et interventions apparaîtront ici automatiquement.</p>
-            </div>
+        <div className="grid gap-4">
+          {appointments.length === 0 ? (
+            <p className="text-gray-500">Aucun rendez-vous pour l’instant.</p>
           ) : (
-            <div className="space-y-4">
-              {visibleAppointments.map((appointment) => {
-                const date = formatAgendaDate(appointment.date_rdv);
-                const meta = STATUS_META[appointment.statut] || { label: STATUS_LABELS[appointment.statut] || appointment.statut, badge: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
-                return (
-                  <article key={appointment.id} className="overflow-hidden rounded-[28px] border border-black/5 bg-white shadow-[0_10px_32px_rgba(30,45,37,0.05)]">
-                    <div className="grid gap-0 md:grid-cols-[118px_1fr]">
-                      <div className="flex items-center gap-3 border-b border-black/5 bg-[#F7F9F7] px-5 py-4 md:flex-col md:justify-center md:border-b-0 md:border-r md:px-3 md:text-center">
-                        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-sm md:h-16 md:w-16">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#0B6B50]">{date.month}</p>
-                            <p className="text-2xl font-black leading-none text-[#111815]">{date.day}</p>
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold capitalize text-[#66736D]">{date.weekday}</p>
-                          <p className="mt-0.5 text-base font-black text-[#111815]">{date.time}</p>
-                        </div>
-                      </div>
+            appointments.map((appointment) => (
+              <div key={appointment.id} className="rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_8px_24px_rgba(30,45,37,0.05)]">
+                <div className="flex flex-col md:flex-row md:justify-between gap-3">
+                  <div>
+                    <p><strong>👤 Client :</strong> {appointment.client_nom}</p>
+                    <p><strong>🛠 Prestation :</strong> {appointment.service_titre}</p>
+                    <p><strong>📅 Début :</strong> {new Date(appointment.date_rdv).toLocaleString('fr-FR')}</p>
+                    <p><strong>⏱ Fin prévue :</strong> {new Date(appointment.date_fin).toLocaleString('fr-FR')}</p>
+                    <p><strong>📍 Lieu :</strong> {appointment.lieu_intervention === 'atelier' ? 'Dans votre atelier' : 'Chez le client'}</p>
+                    {appointment.lieu_intervention === 'chez_client' && appointment.intervention_adresse ? (
+                      <p className="mt-1 max-w-xl text-sm text-[#526159]">{appointment.intervention_adresse}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <span className="inline-block bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
+                      {STATUS_LABELS[appointment.statut] || appointment.statut}
+                    </span>
+                  </div>
+                </div>
 
-                      <div className="p-5 sm:p-6">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-lg font-black text-[#111815]">{appointment.service_titre}</h3>
-                              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black ${meta.badge}`}>
-                                <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                                {meta.label}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm font-semibold text-[#526159]">Client : <span className="text-[#111815]">{appointment.client_nom}</span></p>
-                          </div>
+                {appointment.commentaires && (
+                  <p className="mt-2 text-sm text-gray-600">💬 {appointment.commentaires}</p>
+                )}
+                {appointment.motif_annulation && (
+                  <p className="mt-2 text-sm text-red-600">Motif : {appointment.motif_annulation}</p>
+                )}
 
-                          <div className="rounded-2xl bg-[#F7F9F7] px-4 py-3 text-sm">
-                            <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#829087]">Horaire</p>
-                            <p className="mt-1 font-black text-[#334139]">{date.time} · {durationLabel(appointment.date_rdv, appointment.date_fin)}</p>
-                          </div>
-                        </div>
+                {appointment.lieu_intervention === 'chez_client'
+                  && appointment.intervention_latitude != null
+                  && appointment.intervention_longitude != null ? (
+                  <div className="mt-3 rounded-2xl bg-[#F7F9F7] p-3">
+                    <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-[#718078]">Itinéraire vers le client</p>
+                    <LocationActions
+                      latitude={appointment.intervention_latitude}
+                      longitude={appointment.intervention_longitude}
+                      label={appointment.intervention_adresse || appointment.client_nom}
+                      compact
+                    />
+                  </div>
+                ) : null}
 
-                        <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                          <div className="rounded-2xl border border-black/5 bg-[#FCFDFC] p-4">
-                            <p className="text-xs font-black uppercase tracking-[0.08em] text-[#718078]">Lieu de l’intervention</p>
-                            <p className="mt-2 font-black text-[#334139]">{appointment.lieu_intervention === 'atelier' ? 'Dans votre atelier' : 'Chez le client'}</p>
-                            {appointment.lieu_intervention === 'chez_client' && appointment.intervention_adresse ? (
-                              <p className="mt-1 text-sm leading-5 text-[#66736D]">{appointment.intervention_adresse}</p>
-                            ) : null}
-                          </div>
-                          {appointment.commentaires ? (
-                            <div className="rounded-2xl border border-black/5 bg-[#FCFDFC] p-4">
-                              <p className="text-xs font-black uppercase tracking-[0.08em] text-[#718078]">Note du client</p>
-                              <p className="mt-2 text-sm leading-5 text-[#526159]">{appointment.commentaires}</p>
-                            </div>
-                          ) : (
-                            <div className="rounded-2xl border border-black/5 bg-[#FCFDFC] p-4">
-                              <p className="text-xs font-black uppercase tracking-[0.08em] text-[#718078]">Référence</p>
-                              <p className="mt-2 text-sm font-bold text-[#526159]">Rendez-vous #{appointment.id}</p>
-                            </div>
-                          )}
-                        </div>
-
-                        {appointment.motif_annulation ? (
-                          <div className="mt-4 rounded-2xl bg-[#FFF4F2] px-4 py-3 text-sm text-[#A63D34]"><strong>Motif :</strong> {appointment.motif_annulation}</div>
-                        ) : null}
-
-                        {appointment.lieu_intervention === 'chez_client'
-                          && appointment.intervention_latitude != null
-                          && appointment.intervention_longitude != null ? (
-                          <div className="mt-4 rounded-2xl bg-[#F3F7F5] p-4">
-                            <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-[#718078]">Itinéraire vers le client</p>
-                            <LocationActions
-                              latitude={appointment.intervention_latitude}
-                              longitude={appointment.intervention_longitude}
-                              label={appointment.intervention_adresse || appointment.client_nom}
-                              compact
-                            />
-                          </div>
-                        ) : null}
-
-                        {(appointment.transitions_autorisees || []).length > 0 ? (
-                          <div className="mt-5 flex flex-wrap gap-2 border-t border-black/5 pt-4">
-                            {(appointment.transitions_autorisees || []).map((transition) => {
-                              const action = ACTIONS[transition];
-                              if (!action) return null;
-                              const semantic = transition === 'termine'
-                                ? 'bg-[#0B6B50] hover:bg-[#095A43]'
-                                : transition === 'annule_artisan' || transition === 'refuse'
-                                  ? 'border border-[#E7C5C1] bg-white text-[#B23A31] hover:bg-[#FFF4F2]'
-                                  : action[1];
-                              return (
-                                <button
-                                  key={transition}
-                                  onClick={() => updateStatus(appointment, transition)}
-                                  className={`${semantic} rounded-xl px-4 py-2.5 text-sm font-black ${transition === 'annule_artisan' || transition === 'refuse' ? '' : 'text-white'}`}
-                                >
-                                  {action[0]}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(appointment.transitions_autorisees || []).map((transition) => {
+                    const action = ACTIONS[transition];
+                    if (!action) return null;
+                    return (
+                      <button
+                        key={transition}
+                        onClick={() => updateStatus(appointment, transition)}
+                        className={`${action[1]} text-white px-3 py-2 rounded text-sm`}
+                      >
+                        {action[0]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           )}
         </div>
       ) : (
@@ -659,7 +489,7 @@ export default function ArtisanAppointments() {
                     <p><strong>Devis :</strong> {completionPreview.quote_reference}</p>
                   )}
                   <p className="mt-2 text-base font-semibold text-gray-900">
-                    Montant prévu : {new Intl.NumberFormat('fr-FR').format(Number(completionPreview.montant || 0))} FCFA
+                    Montant prévu : {formatMoney(completionPreview.montant, completionPreview.currency)}
                   </p>
                 </div>
 
@@ -701,7 +531,7 @@ export default function ArtisanAppointments() {
                     <fieldset>
                       <legend className="mb-3 text-sm font-bold text-[#334139]">Moyen de paiement *</legend>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {paymentMethods.map((method) => {
+                        {(completionPreview.payment_methods || []).map((method) => {
                           const selected = paymentForm.methode_paiement === method.value;
                           return (
                             <button

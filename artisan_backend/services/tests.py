@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -45,6 +47,60 @@ class ServiceMarketplaceTests(APITestCase):
             {'min_prix': '50000', 'max_prix': '10000'},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_service_currency_follows_artisan_account_currency(self):
+        self.artisan.country_code = 'FR'
+        self.artisan.country_calling_code = '+33'
+        self.artisan.currency_code = 'EUR'
+        self.artisan.save(update_fields=['country_code', 'country_calling_code', 'currency_code'])
+
+        response = self.client.get(reverse('service-detail', args=[self.service.pk]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['currency_code'], 'EUR')
+
+    @patch('services.serializers.convert_amount')
+    def test_authenticated_client_receives_price_in_own_currency(self, mocked_convert):
+        self.artisan.country_code = 'CI'
+        self.artisan.country_calling_code = '+225'
+        self.artisan.currency_code = 'XOF'
+        self.artisan.save(update_fields=['country_code', 'country_calling_code', 'currency_code'])
+        client_user = CustomUser.objects.create_user(
+            email='client-fr@example.com',
+            username='client-fr',
+            password='StrongPass123!',
+            role='client',
+            country_code='FR',
+            country_calling_code='+33',
+            currency_code='EUR',
+        )
+        mocked_convert.return_value = 38.11
+        self.client.force_authenticate(client_user)
+
+        response = self.client.get(reverse('service-detail', args=[self.service.pk]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['currency_code'], 'XOF')
+        self.assertEqual(response.data['display_currency_code'], 'EUR')
+        self.assertEqual(float(response.data['display_prix']), 38.11)
+        self.assertTrue(response.data['display_conversion_applied'])
+        mocked_convert.assert_called_once_with(self.service.prix, 'XOF', 'EUR')
+
+    @patch('services.serializers.convert_amount', return_value=None)
+    def test_currency_conversion_failure_falls_back_to_contract_currency(self, mocked_convert):
+        client_user = CustomUser.objects.create_user(
+            email='client-fallback@example.com',
+            username='client-fallback',
+            password='StrongPass123!',
+            role='client',
+            country_code='FR',
+            country_calling_code='+33',
+            currency_code='EUR',
+        )
+        self.client.force_authenticate(client_user)
+        response = self.client.get(reverse('service-detail', args=[self.service.pk]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['display_currency_code'], self.artisan.currency_code)
+        self.assertFalse(response.data['display_conversion_applied'])
 
 
 class ServiceInterventionZoneTests(APITestCase):

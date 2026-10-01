@@ -10,7 +10,6 @@ from .models import Payment, Quote
 
 
 DECLARABLE_APPOINTMENT_STATUSES = {'termine', 'effectue'}
-MANUAL_PAYMENT_METHODS = {'cash', 'bank_transfer', 'other'}
 
 
 def accepted_quote_for(appointment):
@@ -18,109 +17,25 @@ def accepted_quote_for(appointment):
 
 
 def contract_total_for(appointment):
-    """Retourne le montant contractuel à régler.
-
-    - Prix fixe : prix de la prestation.
-    - À partir de : devis accepté prioritaire, sinon prix minimum affiché.
-    - Sur devis : devis accepté obligatoire.
-    """
     quote = accepted_quote_for(appointment)
-    if quote:
-        total = quote.total
-        if total is None or Decimal(total) <= 0:
-            raise ValidationError('Le montant du devis accepté est invalide.')
-        return Decimal(total), quote
-
-    if appointment.service.mode_tarification == 'sur_devis':
+    if appointment.service.mode_tarification in {'sur_devis', 'a_partir_de'} and not quote:
         raise ValidationError(
             'Un devis accepté est requis pour déterminer le montant final de cette prestation.'
         )
-
-    total = appointment.service.prix
+    total = quote.total if quote else appointment.service.prix
     if total is None or Decimal(total) <= 0:
         raise ValidationError('Le montant de la prestation est invalide.')
-    return Decimal(total), None
+    return Decimal(total), quote
 
 
 def current_payment_for(appointment):
     return appointment.payments.order_by('-updated_at', '-id').first()
 
 
-def get_or_create_payment_for_appointment(appointment):
-    total, quote = contract_total_for(appointment)
-    payment = current_payment_for(appointment)
-    if payment is None:
-        payment = Payment.objects.create(
-            client=appointment.client,
-            service=appointment.service,
-            appointment=appointment,
-            quote=quote,
-            montant_initial=total,
-            reduction=Decimal('0'),
-            montant=total,
-            currency='XOF',
-            statut='pending',
-        )
-    elif payment.statut != 'paid':
-        payment.quote = quote
-        payment.montant_initial = total
-        payment.reduction = Decimal('0')
-        payment.montant = total
-        payment.currency = 'XOF'
-        payment.save(update_fields=[
-            'quote', 'montant_initial', 'reduction', 'montant', 'currency', 'updated_at'
-        ])
-    return payment, quote
-
-
 def payment_workspace_for(artisan):
     appointments = (
         Appointment.objects.filter(
             service__artisan=artisan,
-            statut__in=DECLARABLE_APPOINTMENT_STATUSES,
-        )
-        .select_related('client', 'service')
-        .prefetch_related('quotes', 'payments')
-        .order_by('-completed_at', '-date_rdv')
-    )
-
-    rows = []
-    for appointment in appointments:
-        payment = current_payment_for(appointment)
-        try:
-            total, quote = contract_total_for(appointment)
-        except ValidationError:
-            total, quote = None, None
-
-        if payment is not None:
-            total = payment.montant
-            quote = payment.quote
-
-        rows.append(
-            {
-                'appointment_id': appointment.id,
-                'client_username': appointment.client.username,
-                'service_titre': appointment.service.titre,
-                'appointment_status': appointment.statut,
-                'date_rdv': appointment.date_rdv,
-                'completed_at': appointment.completed_at,
-                'amount': total,
-                'quote_reference': quote.reference if quote else None,
-                'payment': payment,
-                'can_declare': (
-                    total is not None
-                    and (not payment or payment.statut != 'paid')
-                    and (not payment or payment.provider != 'geniuspay')
-                ),
-            }
-        )
-    return rows
-
-
-def client_payment_workspace_for(client):
-    appointments = (
-        Appointment.objects.filter(
-            client=client,
             statut__in=DECLARABLE_APPOINTMENT_STATUSES,
         )
         .select_related('client', 'service', 'service__artisan')
@@ -130,51 +45,33 @@ def client_payment_workspace_for(client):
 
     rows = []
     for appointment in appointments:
-        payment = current_payment_for(appointment)
-        error = ''
         try:
             total, quote = contract_total_for(appointment)
-        except ValidationError as exc:
+        except ValidationError:
             total, quote = None, None
-            detail = getattr(exc, 'detail', exc)
-            error = str(detail[0] if isinstance(detail, list) and detail else detail)
 
-        if payment is not None:
-            total = payment.montant
-            quote = payment.quote
-
+        payment = current_payment_for(appointment)
         rows.append(
             {
-                'appointment': appointment,
+                'appointment_id': appointment.id,
+                'client_username': appointment.client.username,
+                'service_titre': appointment.service.titre,
+                'appointment_status': appointment.statut,
+                'date_rdv': appointment.date_rdv,
+                'completed_at': appointment.completed_at,
                 'amount': total,
-                'quote': quote,
+                'currency': appointment.service.artisan.currency_code or 'XOF',
+                'quote_reference': quote.reference if quote else None,
                 'payment': payment,
-                'error': error,
-                'can_pay': (
-                    appointment.statut == 'termine'
-                    and total is not None
-                    and (not payment or payment.statut != 'paid')
-                ),
+                'can_declare': total is not None and (not payment or payment.statut != 'paid'),
             }
         )
     return rows
 
 
 def declare_payment(*, artisan, appointment_id, payment_status, method=None, payment_reference='', notes=''):
-    """Fallback manuel uniquement pour espèces/virement/autre.
-
-    Les moyens Mobile Money doivent obligatoirement passer par GeniusPay.
-    """
     if payment_status not in {'paid', 'unpaid'}:
         raise ValidationError({'statut': 'Statut de paiement invalide.'})
-
-    if payment_status == 'paid' and method not in MANUAL_PAYMENT_METHODS:
-        raise ValidationError({
-            'methode_paiement': (
-                'Wave, Orange Money, MTN Money et Moov Money doivent être réglés '
-                'par le checkout GeniusPay côté client.'
-            )
-        })
 
     with transaction.atomic():
         appointment = (
@@ -195,14 +92,14 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
         payment = current_payment_for(appointment)
 
         if payment and payment.statut == 'paid':
-            raise ValidationError('Ce règlement est déjà confirmé comme payé.')
-        if payment and payment.provider == 'geniuspay' and payment.statut in {'pending', 'processing'}:
             raise ValidationError(
-                'Un paiement GeniusPay est déjà en cours. Attendez son résultat avant toute correction manuelle.'
+                'Ce règlement est déjà déclaré comme payé. Une correction devra passer par l’administration.'
             )
 
         if payment_status == 'paid' and not method:
-            raise ValidationError({'methode_paiement': 'Indiquez comment le client vous a réglé.'})
+            raise ValidationError(
+                {'methode_paiement': 'Indiquez comment le client vous a réglé.'}
+            )
 
         if payment is None:
             payment = Payment(
@@ -213,17 +110,15 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
                 montant_initial=total,
                 reduction=Decimal('0'),
                 montant=total,
+                currency=appointment.service.artisan.currency_code or 'XOF',
             )
         else:
             payment.quote = quote
             payment.montant_initial = total
             payment.reduction = Decimal('0')
             payment.montant = total
+            payment.currency = appointment.service.artisan.currency_code or payment.currency or 'XOF'
 
-        payment.provider = 'manual'
-        payment.provider_status = ''
-        payment.provider_reference = ''
-        payment.checkout_url = ''
         payment.statut = payment_status
         payment.methode_paiement = method if payment_status == 'paid' else None
         payment.payment_reference = (payment_reference or '').strip()[:100] if payment_status == 'paid' else ''
@@ -231,15 +126,21 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
         payment.declared_at = timezone.now()
         payment.notes = (notes or '').strip()[:255]
         payment.paid_at = timezone.now() if payment_status == 'paid' else None
-        payment.confirmed_at = payment.paid_at
         payment.save()
 
-        title = 'Paiement manuel confirmé' if payment_status == 'paid' else 'Règlement en attente'
-        message = (
-            f'{artisan.username} confirme avoir reçu {payment.montant} FCFA pour {appointment.service.titre}.'
-            if payment_status == 'paid'
-            else f'Le règlement de {appointment.service.titre} est toujours en attente.'
-        )
+        if payment_status == 'paid':
+            title = 'Paiement confirmé par votre artisan'
+            message = (
+                f'{artisan.username} confirme avoir reçu {payment.montant} {payment.currency} '
+                f'pour {appointment.service.titre}.'
+            )
+        else:
+            title = 'Paiement non reçu'
+            message = (
+                f'{artisan.username} indique que le règlement de '
+                f'{appointment.service.titre} n’a pas encore été reçu.'
+            )
+
         Notification.objects.create(
             destinataire=appointment.client,
             rendez_vous=appointment,
@@ -248,4 +149,5 @@ def declare_payment(*, artisan, appointment_id, payment_status, method=None, pay
             message=message,
             lien_redirection='/client/paiements',
         )
+
         return payment

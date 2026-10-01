@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { formatMoney } from '../../utils/currency';
 
 const EMPTY_SERVICE = {
   titre: '',
@@ -51,6 +52,7 @@ export default function ArtisanServices() {
   const [message, setMessage] = useState('');
   const [editingService, setEditingService] = useState(null);
   const [generatingDescription, setGeneratingDescription] = useState(false);
+  const [currentCurrency, setCurrentCurrency] = useState('XOF');
 
   const fetchServices = async (silent = false) => {
     try {
@@ -65,6 +67,9 @@ export default function ArtisanServices() {
 
   useEffect(() => {
     fetchServices();
+    axios.get('/accounts/profile/me/')
+      .then((response) => setCurrentCurrency(response.data?.currency_code || 'XOF'))
+      .catch(() => setCurrentCurrency('XOF'));
   }, []);
   useAutoRefresh(() => fetchServices(true), { intervalMs: 20000 });
 
@@ -180,7 +185,7 @@ export default function ArtisanServices() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">{newService.mode_tarification === 'sur_devis' ? 'Prix indicatif (FCFA, 0 autorisé)' : 'Prix (FCFA)'}</label>
+          <label className="block text-sm font-medium mb-1">{newService.mode_tarification === 'sur_devis' ? `Prix indicatif (${currentCurrency}, 0 autorisé)` : `Prix (${currentCurrency})`}</label>
           <input
             type="number"
             min={newService.mode_tarification === 'sur_devis' ? '0' : '1'}
@@ -364,7 +369,7 @@ export default function ArtisanServices() {
             <div key={service.id} className="rounded-[26px] border border-black/5 bg-white p-5 shadow-[0_8px_26px_rgba(30,45,37,0.05)]">
               <h3 className="font-bold text-lg">{service.titre}</h3>
               <p className="text-sm text-gray-600 mt-1">{service.description}</p>
-              <p className="text-green-700 font-semibold mt-2">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'À partir de ' : ''}${service.prix} FCFA`}</p>
+              <p className="text-green-700 font-semibold mt-2">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'À partir de ' : ''}${formatMoney(service.prix, service.currency_code || currentCurrency)}`}</p>
               <div className="text-sm text-gray-500 mt-2 space-y-1">
                 <p>⏱ {service.duree_minutes} min</p>
                 <p>📍 {service.mode_intervention_label}</p>

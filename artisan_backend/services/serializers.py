@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from common.validators import validate_image_upload
+from integrations.currency import convert_amount
 from .models import Service
 
 
@@ -9,6 +10,10 @@ class ServiceSerializer(serializers.ModelSerializer):
     is_liked = serializers.SerializerMethodField()
     is_favori = serializers.SerializerMethodField()
     artisan_username = serializers.CharField(source='artisan.username', read_only=True)
+    currency_code = serializers.CharField(source='artisan.currency_code', read_only=True)
+    display_currency_code = serializers.SerializerMethodField()
+    display_prix = serializers.SerializerMethodField()
+    display_conversion_applied = serializers.SerializerMethodField()
     artisan_verified = serializers.SerializerMethodField()
     artisan_localisation = serializers.SerializerMethodField()
     artisan_latitude = serializers.SerializerMethodField()
@@ -23,7 +28,8 @@ class ServiceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'artisan', 'artisan_username', 'artisan_verified',
             'artisan_localisation', 'artisan_latitude', 'artisan_longitude',
-            'titre', 'description', 'prix',
+            'titre', 'description', 'prix', 'currency_code',
+            'display_prix', 'display_currency_code', 'display_conversion_applied',
             'categorie', 'categorie_label', 'image', 'is_active',
             'mode_tarification', 'mode_tarification_label', 'duree_minutes',
             'delai_reservation_heures', 'mode_intervention', 'mode_intervention_label',
@@ -35,9 +41,46 @@ class ServiceSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'artisan', 'date_creation', 'moyenne_avis', 'is_active', 'is_liked',
             'is_favori', 'artisan_verified', 'artisan_localisation',
-            'artisan_latitude', 'artisan_longitude', 'categorie_label', 'mode_tarification_label',
+            'artisan_latitude', 'artisan_longitude', 'currency_code',
+            'display_prix', 'display_currency_code', 'display_conversion_applied',
+            'categorie_label', 'mode_tarification_label',
             'mode_intervention_label', 'zone_intervention_type_label',
         ]
+
+
+    def _display_money(self, obj):
+        cache_key = f'_display_money_{obj.pk}'
+        cached = getattr(self, cache_key, None)
+        if cached is not None:
+            return cached
+
+        source_currency = str(getattr(obj.artisan, 'currency_code', '') or 'XOF').upper()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+        target_currency = source_currency
+        if user and user.is_authenticated and getattr(user, 'role', None) == 'client':
+            target_currency = str(getattr(user, 'currency_code', '') or source_currency).upper()
+
+        if target_currency == source_currency:
+            result = (obj.prix, source_currency, False)
+        else:
+            converted = convert_amount(obj.prix, source_currency, target_currency)
+            result = (converted, target_currency, True) if converted is not None else (obj.prix, source_currency, False)
+
+        setattr(self, cache_key, result)
+        return result
+
+    def get_display_prix(self, obj):
+        amount, _, _ = self._display_money(obj)
+        return amount
+
+    def get_display_currency_code(self, obj):
+        _, currency, _ = self._display_money(obj)
+        return currency
+
+    def get_display_conversion_applied(self, obj):
+        _, _, applied = self._display_money(obj)
+        return applied
 
     def validate_image(self, value):
         if value is None:

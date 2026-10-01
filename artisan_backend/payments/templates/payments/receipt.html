@@ -30,7 +30,7 @@
     </div>
 
     <div class="box">
-      <p><span class="label">Montant :</span> {{ payment.montant|floatformat:0 }} FCFA</p>
+      <p><span class="label">Montant :</span> {{ payment.montant|floatformat:'-2' }} {{ payment.currency }}</p>
       <p><span class="label">Mode de règlement :</span> {{ payment.get_methode_paiement_display }}</p>
       <p><span class="label">Statut :</span> <span class="paid">PAYÉ</span></p>
       <p><span class="label">Déclaré par :</span> {{ payment.declared_by.username }}</p>

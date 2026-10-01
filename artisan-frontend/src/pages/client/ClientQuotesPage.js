@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { formatMoney } from '../../utils/currency';
 
 const STATUS = {
   sent: ['À valider', 'bg-amber-100 text-amber-800'],
@@ -10,8 +11,8 @@ const STATUS = {
   cancelled: ['Annulé', 'bg-gray-100 text-gray-700'],
 };
 
-function money(value) {
-  return `${new Intl.NumberFormat('fr-FR').format(Number(value || 0))} FCFA`;
+function money(value, currency = 'XOF') {
+  return formatMoney(value, currency);
 }
 
 function errorMessage(error) {
@@ -85,8 +86,8 @@ export default function ClientQuotesPage() {
                         <tr key={line.id} className="border-b last:border-0">
                           <td className="py-2">{line.description}</td>
                           <td>{line.quantity}</td>
-                          <td>{money(line.unit_price)}</td>
-                          <td>{money(line.total)}</td>
+                          <td>{money(line.unit_price, quote.currency)}</td>
+                          <td>{money(line.total, quote.currency)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -94,9 +95,9 @@ export default function ClientQuotesPage() {
                 </div>
 
                 <div className="mt-4 text-sm space-y-1 text-right">
-                  <p>Sous-total : {money(quote.subtotal)}</p>
-                  {Number(quote.discount_amount) > 0 && <p>Réduction : -{money(quote.discount_amount)}</p>}
-                  <p className="text-lg font-bold text-green-700">Total : {money(quote.total)}</p>
+                  <p>Sous-total : {money(quote.subtotal, quote.currency)}</p>
+                  {Number(quote.discount_amount) > 0 && <p>Réduction : -{money(quote.discount_amount, quote.currency)}</p>}
+                  <p className="text-lg font-bold text-green-700">Total : {money(quote.total, quote.currency)}</p>
                 </div>
 
                 {quote.notes && <p className="mt-3 text-sm bg-gray-50 rounded p-3">{quote.notes}</p>}

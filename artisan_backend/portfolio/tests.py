@@ -403,14 +403,28 @@ class PortfolioLocationAndPhoneValidationTests(APITestCase):
             updated = serializer.save()
             self.assertEqual(updated.whatsapp, expected)
 
-    def test_local_number_without_country_code_is_rejected(self):
+    def test_local_number_uses_artisan_country(self):
         serializer = PortfolioSerializer(
             self.portfolio,
-            data={'whatsapp': '0140937504'},
+            data={'whatsapp': '01 40 93 75 04'},
             partial=True,
         )
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('whatsapp', serializer.errors)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertEqual(updated.whatsapp, '+2250140937504')
+
+    def test_french_local_number_uses_artisan_country(self):
+        self.artisan.country_code = 'FR'
+        self.artisan.country_calling_code = '+33'
+        self.artisan.save(update_fields=['country_code', 'country_calling_code'])
+        serializer = PortfolioSerializer(
+            self.portfolio,
+            data={'whatsapp': '06 12 34 56 78'},
+            partial=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertEqual(updated.whatsapp, '+33612345678')
 
 
 class TravelTimeIsochroneTests(APITestCase):

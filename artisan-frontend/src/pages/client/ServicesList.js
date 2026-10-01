@@ -7,6 +7,7 @@ import { getUserRole, isAuthenticated } from '../../utils/auth';
 import { startSpeechRecognition } from '../../utils/speech';
 import { useDataSaver } from '../../utils/accessibility';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { formatServiceMoney } from '../../utils/currency';
 
 const categories = [
   ['alimentation', 'Alimentation'], ['artisanat_d_art', 'Artisanat d’Art'], ['btp', 'Bâtiment & travaux'],
@@ -16,7 +17,6 @@ const categories = [
   ['serigraphie', 'Sérigraphie'], ['services_numeriques', 'Services numériques'], ['transport', 'Transport & logistique'],
 ];
 
-const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
 export default function ServicesList({ publicMode = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -176,7 +176,7 @@ export default function ServicesList({ publicMode = false }) {
                   <div className="mt-5 flex items-end justify-between gap-3 border-t border-black/5 pt-4">
                     <div>
                       <Link to={`/artisans/${service.artisan_username}`} className="text-xs font-semibold text-[#66736D] hover:text-[#0B6B50]">{service.artisan_username}</Link>
-                      <p className="mt-1 text-base font-black text-[#0B6B50]">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatPrice(service.prix)} FCFA`}</p>
+                      <p className="mt-1 text-base font-black text-[#0B6B50]">{service.mode_tarification === 'sur_devis' ? 'Sur devis' : `${service.mode_tarification === 'a_partir_de' ? 'Dès ' : ''}${formatServiceMoney(service)}`}</p>
                     </div>
                     {clientConnected ? (
                       <button onClick={() => toggleFavori(service.id)} aria-label={service.is_favori ? 'Retirer des favoris' : 'Ajouter aux favoris'} className={`grid h-10 w-10 place-items-center rounded-2xl ${service.is_favori ? 'bg-[#FFF0EE] text-[#C64A3F]' : 'bg-[#F3F5F4] text-[#65736B]'}`}>
