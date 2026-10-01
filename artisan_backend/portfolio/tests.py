@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 from accounts.models import CustomUser
 from services.models import Service
 from reviews.models import Review
+from appointments.models import ArtisanAvailability
 from .models import Portfolio
 from .serializers import PortfolioSerializer
 
@@ -29,15 +30,17 @@ class PortfolioDiscoveryTests(APITestCase):
         )
         return artisan
 
-    def _service(self, artisan, title, category):
-        return Service.objects.create(
-            artisan=artisan,
-            titre=title,
-            description=f'Prestation {title}',
-            prix=Decimal('10000'),
-            categorie=category,
-            is_active=True,
-        )
+    def _service(self, artisan, title, category, **extra):
+        payload = {
+            'artisan': artisan,
+            'titre': title,
+            'description': f'Prestation {title}',
+            'prix': Decimal('10000'),
+            'categorie': category,
+            'is_active': True,
+        }
+        payload.update(extra)
+        return Service.objects.create(**payload)
 
     def test_public_list_includes_profile_without_gps_when_location_not_requested(self):
         artisan = self._artisan('portfolio5', 'Cocody')
@@ -137,6 +140,106 @@ class PortfolioDiscoveryTests(APITestCase):
         self.assertEqual(response.data['results'][0]['artisan_nom'], 'tailor')
         values = {item['value'] for item in response.data['available_categories']}
         self.assertEqual(values, {'couture_habillement', 'mecanique_auto'})
+
+
+    def test_verified_filter_and_facet_only_use_real_verified_artisans(self):
+        verified = self._artisan('verified-pro', 'Cocody')
+        verified.verification_status = 'verified'
+        verified.save(update_fields=['verification_status'])
+        other = self._artisan('regular-pro', 'Cocody')
+        self._service(verified, 'Plomberie vérifiée', 'btp')
+        self._service(other, 'Plomberie standard', 'btp')
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'verified': 'true',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['available_filters']['verified'], 1)
+        self.assertEqual(response.data['total'], 1)
+        self.assertEqual(response.data['results'][0]['artisan_nom'], 'verified-pro')
+
+    def test_home_service_filter_only_returns_services_that_can_visit_client(self):
+        mobile = self._artisan('mobile-pro', 'Cocody')
+        workshop = self._artisan('workshop-pro', 'Cocody')
+        self._service(mobile, 'Dépannage à domicile', 'electronique', mode_intervention='chez_client')
+        self._service(workshop, 'Réparation atelier', 'electronique', mode_intervention='atelier')
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'home_service': 'true',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['available_filters']['home_service'], 1)
+        self.assertEqual(response.data['total'], 1)
+        row = response.data['results'][0]
+        self.assertEqual(row['artisan_nom'], 'mobile-pro')
+        self.assertTrue(row['supports_home_service'])
+
+    def test_minimum_rating_filter_uses_real_reviews(self):
+        top = self._artisan('top-rated', 'Cocody')
+        low = self._artisan('lower-rated', 'Cocody')
+        top_service = self._service(top, 'Top service', 'btp')
+        low_service = self._service(low, 'Service moyen', 'btp')
+        client = CustomUser.objects.create_user(
+            email='facet-rating@example.com',
+            username='facet-rating',
+            password='StrongPass123!',
+            role='client',
+        )
+        Review.objects.create(client=client, service=top_service, note=5)
+        Review.objects.create(client=client, service=low_service, note=3)
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'min_rating': '4.5',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 1)
+        self.assertEqual(response.data['results'][0]['artisan_nom'], 'top-rated')
+        values = {str(item['value']): item['count'] for item in response.data['available_filters']['rating_options']}
+        self.assertEqual(values.get('4.5'), 1)
+
+    def test_availability_7d_filter_requires_a_real_bookable_slot(self):
+        available = self._artisan('available-pro', 'Cocody')
+        unavailable = self._artisan('no-hours-pro', 'Cocody')
+        self._service(
+            available,
+            'Service disponible',
+            'btp',
+            duree_minutes=30,
+            delai_reservation_heures=0,
+        )
+        self._service(
+            unavailable,
+            'Service sans horaire',
+            'btp',
+            duree_minutes=30,
+            delai_reservation_heures=0,
+        )
+        for weekday in range(7):
+            ArtisanAvailability.objects.create(
+                artisan=available,
+                jour_semaine=weekday,
+                heure_debut='08:00',
+                heure_fin='23:30',
+                actif=True,
+            )
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'availability': '7d',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['available_filters']['availability_7d'], 1)
+        self.assertEqual(response.data['total'], 1)
+        row = response.data['results'][0]
+        self.assertEqual(row['artisan_nom'], 'available-pro')
+        self.assertIsNotNone(row['next_available_at'])
 
 
 class PortfolioLocationAndPhoneValidationTests(APITestCase):

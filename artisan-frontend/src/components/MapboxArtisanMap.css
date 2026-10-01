@@ -87,3 +87,24 @@
   .artisan-mapbox-cluster--medium { width:52px; height:52px; }
   .artisan-mapbox-cluster--large { width:60px; height:60px; }
 }
+
+.artisan-mapbox-card__quick-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.artisan-mapbox-card__quick-badges span {
+  border-radius: 999px;
+  background: #f2f5f3;
+  padding: 4px 7px;
+  color: #526159;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.artisan-mapbox-card__quick-badges span.is-available {
+  background: #eaf4f0;
+  color: #0b6b50;
+}

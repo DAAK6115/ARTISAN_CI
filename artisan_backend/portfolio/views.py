@@ -1,13 +1,16 @@
 import logging
 import unicodedata
+from datetime import datetime, timedelta
 
 from django.db.models import Avg, Count, Prefetch, Q
+from django.utils import timezone
 from geopy.distance import geodesic
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from accounts.permissions import IsArtisan
+from appointments.domain import generate_available_slots
 from services.models import Service
 from reviews.models import Review
 from .models import Portfolio, Realisation
@@ -82,18 +85,17 @@ class AddRealisationView(generics.CreateAPIView):
 
 
 class PortfolioMapView(generics.ListAPIView):
-    """Découverte géolocalisée des artisans.
+    """Découverte géolocalisée et filtrée des artisans.
 
-    `scope=nearby` + lat/lng limite les résultats au rayon demandé.
-    `scope=all` ignore le rayon et permet une recherche élargie par texte.
-
-    La réponse contient également les catégories réellement disponibles dans
-    le résultat géographique/texte courant. Une catégorie sans artisan actif
-    n'est donc jamais proposée dans l'interface de filtre.
+    Les catégories et filtres exposés au frontend sont construits à partir des
+    données réellement présentes dans le résultat courant. La disponibilité
+    repose sur les créneaux effectivement réservables (horaires, indisponibilités,
+    rendez-vous déjà pris et paramètres du service).
     """
 
     serializer_class = PortfolioSerializer
     permission_classes = [permissions.AllowAny]
+    AVAILABILITY_VALUES = {'today', '7d'}
 
     def _base_queryset(self):
         active_services = Service.objects.filter(is_active=True).order_by('titre')
@@ -151,10 +153,94 @@ class PortfolioMapView(generics.ListAPIView):
             raise ValidationError({'radius': 'Le rayon doit être compris entre 0 et 1000 km.'})
         return radius
 
+    def _minimum_rating(self):
+        raw = str(self.request.query_params.get('min_rating', '')).strip()
+        if not raw:
+            return None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            raise ValidationError({'min_rating': 'Note minimale invalide.'})
+        if value < 1 or value > 5:
+            raise ValidationError({'min_rating': 'La note minimale doit être comprise entre 1 et 5.'})
+        return value
+
+    def _availability_filter(self):
+        value = str(self.request.query_params.get('availability', '')).strip().lower()
+        if value and value not in self.AVAILABILITY_VALUES:
+            raise ValidationError({'availability': 'Disponibilité invalide.'})
+        return value
+
+    def _bool_param(self, name):
+        raw = str(self.request.query_params.get(name, '')).strip().lower()
+        if raw in {'', '0', 'false', 'no', 'non'}:
+            return False
+        if raw in {'1', 'true', 'yes', 'oui'}:
+            return True
+        raise ValidationError({name: 'Valeur booléenne invalide.'})
+
     @staticmethod
     def _service_categories(portfolio):
         services = getattr(portfolio.artisan, 'active_services_for_discovery', [])
         return {service.categorie for service in services if service.categorie}
+
+    @staticmethod
+    def _search_categories(search):
+        categories = set()
+        for token in [token for token in _normalize_search_text(search).split() if token]:
+            categories.update(_matching_category_values(token))
+        return categories
+
+    def _eligible_services(self, portfolio, selected_category='', search=''):
+        services = list(getattr(portfolio.artisan, 'active_services_for_discovery', []))
+        if selected_category:
+            services = [service for service in services if service.categorie == selected_category]
+        search_categories = self._search_categories(search)
+        if search_categories:
+            services = [service for service in services if service.categorie in search_categories]
+        return services
+
+    @staticmethod
+    def _supports_home_service(services):
+        return any(service.mode_intervention in {'chez_client', 'les_deux'} for service in services)
+
+    @staticmethod
+    def _intervention_modes(services):
+        labels = dict(Service.MODE_INTERVENTION_CHOICES)
+        values = sorted({service.mode_intervention for service in services if service.mode_intervention})
+        return [{'value': value, 'label': labels.get(value, value)} for value in values]
+
+    @staticmethod
+    def _next_available_slot(services, days=7):
+        """Retourne le premier créneau réellement réservable dans la fenêtre."""
+        if not services:
+            return None
+
+        today = timezone.localdate()
+        for offset in range(days):
+            day = today + timedelta(days=offset)
+            candidates = []
+            for service in services:
+                slots = generate_available_slots(service, day)
+                if not slots:
+                    continue
+                first = slots[0]
+                try:
+                    start = datetime.fromisoformat(first['start'])
+                except (TypeError, ValueError, KeyError):
+                    continue
+                candidates.append((start, service, first))
+            if candidates:
+                candidates.sort(key=lambda item: item[0])
+                start, service, slot = candidates[0]
+                return {
+                    'start': slot['start'],
+                    'end': slot['end'],
+                    'service_id': service.id,
+                    'service_title': service.titre,
+                    'is_today': timezone.localtime(start).date() == today if timezone.is_aware(start) else start.date() == today,
+                }
+        return None
 
     def _with_distances(self, portfolios, coordinates):
         if not coordinates:
@@ -180,10 +266,28 @@ class PortfolioMapView(generics.ListAPIView):
             result.append(portfolio)
         return result
 
+    @staticmethod
+    def _rating_facets(portfolios):
+        options = []
+        for threshold in (4.5, 4.0, 3.0):
+            count = sum(
+                1 for portfolio in portfolios
+                if (getattr(portfolio, 'review_count_value', 0) or 0) > 0
+                and float(getattr(portfolio, 'rating_average_value', 0) or 0) >= threshold
+            )
+            if count:
+                options.append({'value': threshold, 'label': f'{str(threshold).replace(".", ",")} et +', 'count': count})
+        return options
+
     def list(self, request, *args, **kwargs):
         search = str(request.query_params.get('search', '')).strip()
         selected_category = str(request.query_params.get('category', '')).strip()
         scope = str(request.query_params.get('scope', 'all')).strip().lower()
+        min_rating = self._minimum_rating()
+        verified_only = self._bool_param('verified')
+        home_service_only = self._bool_param('home_service')
+        availability_filter = self._availability_filter()
+
         if scope not in {'all', 'nearby'}:
             raise ValidationError({'scope': 'Mode de recherche invalide.'})
 
@@ -200,10 +304,7 @@ class PortfolioMapView(generics.ListAPIView):
             .values('service__artisan_id')
             .annotate(average=Avg('note'), count=Count('id'))
         )
-        rating_map = {
-            row['service__artisan_id']: row
-            for row in rating_rows
-        }
+        rating_map = {row['service__artisan_id']: row for row in rating_rows}
         for portfolio in portfolios:
             stats = rating_map.get(portfolio.artisan_id, {})
             portfolio.rating_average_value = stats.get('average')
@@ -213,14 +314,12 @@ class PortfolioMapView(generics.ListAPIView):
             if coordinates is None:
                 raise ValidationError({'localisation': 'Votre position est requise pour une recherche autour de vous.'})
             portfolios = [
-                portfolio
-                for portfolio in portfolios
+                portfolio for portfolio in portfolios
                 if portfolio.distance_km_value is not None and portfolio.distance_km_value <= radius
             ]
 
-        # Les catégories sont calculées AVANT le filtre de catégorie : ainsi le
-        # menu continue à proposer toutes les catégories réellement présentes
-        # dans la zone/recherche courante.
+        # Les catégories sont calculées avant leur propre filtre pour conserver
+        # toutes les options réellement disponibles dans la zone/recherche.
         category_counts = {}
         for portfolio in portfolios:
             for category in self._service_categories(portfolio):
@@ -229,8 +328,7 @@ class PortfolioMapView(generics.ListAPIView):
         label_map = dict(Service.CATEGORIES_CHOICES)
         available_categories = [
             {'value': value, 'label': label_map.get(value, value), 'count': count}
-            for value, count in category_counts.items()
-            if count > 0
+            for value, count in category_counts.items() if count > 0
         ]
         available_categories.sort(key=lambda item: item['label'])
 
@@ -239,10 +337,57 @@ class PortfolioMapView(generics.ListAPIView):
                 portfolios = []
             else:
                 portfolios = [
-                    portfolio
-                    for portfolio in portfolios
+                    portfolio for portfolio in portfolios
                     if selected_category in self._service_categories(portfolio)
                 ]
+
+        # Métadonnées avancées calculées sur les services pertinents pour la
+        # catégorie/métier actuellement recherché.
+        for portfolio in portfolios:
+            eligible_services = self._eligible_services(portfolio, selected_category, search)
+            portfolio.supports_home_service_value = self._supports_home_service(eligible_services)
+            portfolio.intervention_modes_value = self._intervention_modes(eligible_services)
+
+            # Si le client combine « Chez le client » et « Disponible », le
+            # créneau doit appartenir à une prestation réellement réalisable à
+            # domicile, pas à une autre prestation uniquement disponible en atelier.
+            availability_services = eligible_services
+            if home_service_only:
+                availability_services = [
+                    service for service in eligible_services
+                    if service.mode_intervention in {'chez_client', 'les_deux'}
+                ]
+
+            next_slot = self._next_available_slot(availability_services, days=7)
+            portfolio.next_available_at_value = next_slot['start'] if next_slot else None
+            portfolio.next_available_service_value = next_slot['service_title'] if next_slot else None
+            portfolio.available_today_value = bool(next_slot and next_slot['is_today'])
+            portfolio.available_7d_value = bool(next_slot)
+
+        # Facettes avant application des filtres avancés : elles représentent
+        # les possibilités réellement disponibles pour la recherche courante.
+        available_filters = {
+            'verified': sum(1 for p in portfolios if p.artisan.verification_status == 'verified'),
+            'home_service': sum(1 for p in portfolios if getattr(p, 'supports_home_service_value', False)),
+            'availability_today': sum(1 for p in portfolios if getattr(p, 'available_today_value', False)),
+            'availability_7d': sum(1 for p in portfolios if getattr(p, 'available_7d_value', False)),
+            'rating_options': self._rating_facets(portfolios),
+        }
+
+        if verified_only:
+            portfolios = [p for p in portfolios if p.artisan.verification_status == 'verified']
+        if home_service_only:
+            portfolios = [p for p in portfolios if getattr(p, 'supports_home_service_value', False)]
+        if min_rating is not None:
+            portfolios = [
+                p for p in portfolios
+                if (getattr(p, 'review_count_value', 0) or 0) > 0
+                and float(getattr(p, 'rating_average_value', 0) or 0) >= min_rating
+            ]
+        if availability_filter == 'today':
+            portfolios = [p for p in portfolios if getattr(p, 'available_today_value', False)]
+        elif availability_filter == '7d':
+            portfolios = [p for p in portfolios if getattr(p, 'available_7d_value', False)]
 
         if coordinates:
             portfolios.sort(
@@ -257,6 +402,7 @@ class PortfolioMapView(generics.ListAPIView):
         return Response({
             'results': serializer.data,
             'available_categories': available_categories,
+            'available_filters': available_filters,
             'total': len(portfolios),
             'scope': scope,
             'radius_km': radius,

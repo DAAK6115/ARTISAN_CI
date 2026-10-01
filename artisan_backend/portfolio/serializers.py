@@ -40,6 +40,11 @@ class PortfolioSerializer(serializers.ModelSerializer):
     distance_km = serializers.SerializerMethodField()
     rating_average = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    supports_home_service = serializers.SerializerMethodField()
+    intervention_modes = serializers.SerializerMethodField()
+    next_available_at = serializers.SerializerMethodField()
+    next_available_service = serializers.SerializerMethodField()
+    available_today = serializers.SerializerMethodField()
 
     # Le GPS du navigateur peut envoyer beaucoup plus de 6 décimales.
     # On accepte d'abord la valeur comme flottant puis on la normalise vers
@@ -55,13 +60,17 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
             'longitude', 'visible', 'realisations', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
-            'rating_average', 'review_count',
+            'rating_average', 'review_count', 'supports_home_service',
+            'intervention_modes', 'next_available_at', 'next_available_service',
+            'available_today',
         ]
         read_only_fields = [
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
             'artisan_verification_status', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
-            'rating_average', 'review_count',
+            'rating_average', 'review_count', 'supports_home_service',
+            'intervention_modes', 'next_available_at', 'next_available_service',
+            'available_today',
         ]
 
 
@@ -113,6 +122,32 @@ class PortfolioSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return self._rating_stats(obj)['count']
+
+    def get_supports_home_service(self, obj):
+        value = getattr(obj, 'supports_home_service_value', None)
+        if value is not None:
+            return bool(value)
+        return any(
+            service.mode_intervention in {'chez_client', 'les_deux'}
+            for service in self._active_services(obj)
+        )
+
+    def get_intervention_modes(self, obj):
+        value = getattr(obj, 'intervention_modes_value', None)
+        if value is not None:
+            return value
+        labels = dict(Service.MODE_INTERVENTION_CHOICES)
+        values = sorted({service.mode_intervention for service in self._active_services(obj) if service.mode_intervention})
+        return [{'value': item, 'label': labels.get(item, item)} for item in values]
+
+    def get_next_available_at(self, obj):
+        return getattr(obj, 'next_available_at_value', None)
+
+    def get_next_available_service(self, obj):
+        return getattr(obj, 'next_available_service_value', None)
+
+    def get_available_today(self, obj):
+        return bool(getattr(obj, 'available_today_value', False))
 
     def get_artisan_verified(self, obj):
         return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')

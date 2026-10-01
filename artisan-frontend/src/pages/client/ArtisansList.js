@@ -33,6 +33,16 @@ function RatingBadge({ artisan, compact = false }) {
   );
 }
 
+function availabilityLabel(artisan) {
+  if (!artisan?.next_available_at) return null;
+  const date = new Date(artisan.next_available_at);
+  if (Number.isNaN(date.getTime())) return null;
+  const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(date);
+  if (artisan.available_today) return `Disponible aujourd’hui à ${time}`;
+  const day = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(date);
+  return `Prochain créneau ${day} à ${time}`;
+}
+
 export default function ArtisansList() {
   const [artisans, setArtisans] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -45,6 +55,17 @@ export default function ArtisansList() {
   const [scope, setScope] = useState('all');
   const [view, setView] = useState('map');
   const [locating, setLocating] = useState(false);
+  const [minRating, setMinRating] = useState('');
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [homeServiceOnly, setHomeServiceOnly] = useState(false);
+  const [availability, setAvailability] = useState('');
+  const [availableFilters, setAvailableFilters] = useState({
+    verified: 0,
+    home_service: 0,
+    availability_today: 0,
+    availability_7d: 0,
+    rating_options: [],
+  });
 
   const loadArtisans = useCallback(async ({
     currentPosition = position,
@@ -52,6 +73,10 @@ export default function ArtisansList() {
     currentSearch = search,
     currentCategory = selectedCategory,
     currentScope = scope,
+    currentMinRating = minRating,
+    currentVerifiedOnly = verifiedOnly,
+    currentHomeServiceOnly = homeServiceOnly,
+    currentAvailability = availability,
     silent = false,
   } = {}) => {
     if (currentScope === 'nearby' && !currentPosition) return;
@@ -65,6 +90,10 @@ export default function ArtisansList() {
       };
 
       if (currentCategory) params.category = currentCategory;
+      if (currentMinRating) params.min_rating = currentMinRating;
+      if (currentVerifiedOnly) params.verified = 'true';
+      if (currentHomeServiceOnly) params.home_service = 'true';
+      if (currentAvailability) params.availability = currentAvailability;
       if (currentPosition) {
         params.lat = currentPosition[0];
         params.lng = currentPosition[1];
@@ -77,6 +106,13 @@ export default function ArtisansList() {
 
       setArtisans(data.results || []);
       setCategories(nextCategories);
+      setAvailableFilters(data.available_filters || {
+        verified: 0,
+        home_service: 0,
+        availability_today: 0,
+        availability_7d: 0,
+        rating_options: [],
+      });
 
       if (currentCategory && !nextCategories.some((category) => category.value === currentCategory)) {
         setSelectedCategory('');
@@ -86,10 +122,11 @@ export default function ArtisansList() {
       setMessage(typeof detail === 'string' ? detail : 'Impossible de charger les artisans pour le moment.');
       setArtisans([]);
       setCategories([]);
+      setAvailableFilters({ verified: 0, home_service: 0, availability_today: 0, availability_7d: 0, rating_options: [] });
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [position, radius, search, selectedCategory, scope]);
+  }, [position, radius, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, availability]);
 
   const activateNearbySearch = useCallback(() => {
     if (!navigator.geolocation) {
@@ -131,7 +168,7 @@ export default function ArtisansList() {
       loadArtisans();
     }, search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
-  }, [loadArtisans, search, selectedCategory, radius, scope, position]);
+  }, [loadArtisans, search, selectedCategory, radius, scope, position, minRating, verifiedOnly, homeServiceOnly, availability]);
 
   useAutoRefresh(() => loadArtisans({ silent: true }), { intervalMs: 30000 });
 
@@ -147,6 +184,14 @@ export default function ArtisansList() {
   const setSearchEverywhere = () => {
     setScope('all');
     setMessage('Recherche élargie activée : vous pouvez saisir une ville, une commune, un métier ou une spécialité.');
+  };
+
+  const advancedFilterCount = [Boolean(minRating), verifiedOnly, homeServiceOnly, Boolean(availability)].filter(Boolean).length;
+  const clearAdvancedFilters = () => {
+    setMinRating('');
+    setVerifiedOnly(false);
+    setHomeServiceOnly(false);
+    setAvailability('');
   };
 
   return (
@@ -231,6 +276,64 @@ export default function ArtisansList() {
             </button>
           ))}
         </div>
+
+        {(availableFilters.verified > 0 || availableFilters.home_service > 0 || availableFilters.availability_today > 0 || availableFilters.availability_7d > 0 || availableFilters.rating_options?.length > 0) && (
+          <div className="mt-4 border-t border-black/5 pt-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#718078]">Filtres disponibles dans cette recherche</p>
+              {advancedFilterCount > 0 && (
+                <button type="button" onClick={clearAdvancedFilters} className="text-xs font-black text-[#B85D1C] hover:underline">
+                  Réinitialiser ({advancedFilterCount})
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {availableFilters.verified > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setVerifiedOnly((value) => !value)}
+                  className={`rounded-full border px-3 py-2 text-xs font-black transition ${verifiedOnly ? 'border-[#0B6B50] bg-[#0B6B50] text-white' : 'border-[#DDE5E0] bg-white text-[#334139]'}`}
+                >
+                  ✓ Vérifiés · {availableFilters.verified}
+                </button>
+              )}
+              {availableFilters.home_service > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHomeServiceOnly((value) => !value)}
+                  className={`rounded-full border px-3 py-2 text-xs font-black transition ${homeServiceOnly ? 'border-[#0B6B50] bg-[#0B6B50] text-white' : 'border-[#DDE5E0] bg-white text-[#334139]'}`}
+                >
+                  Chez le client · {availableFilters.home_service}
+                </button>
+              )}
+              {(availableFilters.availability_today > 0 || availableFilters.availability_7d > 0) && (
+                <select
+                  value={availability}
+                  onChange={(event) => setAvailability(event.target.value)}
+                  className="rounded-full border border-[#DDE5E0] bg-white px-3 py-2 text-xs font-black text-[#334139]"
+                  aria-label="Filtrer par disponibilité"
+                >
+                  <option value="">Toutes disponibilités</option>
+                  {availableFilters.availability_today > 0 && <option value="today">Aujourd’hui ({availableFilters.availability_today})</option>}
+                  {availableFilters.availability_7d > 0 && <option value="7d">Sous 7 jours ({availableFilters.availability_7d})</option>}
+                </select>
+              )}
+              {availableFilters.rating_options?.length > 0 && (
+                <select
+                  value={minRating}
+                  onChange={(event) => setMinRating(event.target.value)}
+                  className="rounded-full border border-[#DDE5E0] bg-white px-3 py-2 text-xs font-black text-[#334139]"
+                  aria-label="Filtrer par note minimale"
+                >
+                  <option value="">Toutes les notes</option>
+                  {availableFilters.rating_options.map((option) => (
+                    <option key={option.value} value={option.value}>★ {option.label} ({option.count})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {message && <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">{message}</div>}
@@ -284,7 +387,15 @@ export default function ArtisansList() {
                     </div>
 
                     <p className="mt-3 text-xs font-black uppercase tracking-[0.08em] text-[#0B6B50]">{categorySummary(artisan)}</p>
-                    <div className="mt-2"><RatingBadge artisan={artisan} /></div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <RatingBadge artisan={artisan} />
+                      {artisan.supports_home_service && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">Chez le client</span>}
+                    </div>
+                    {availabilityLabel(artisan) && (
+                      <p className={`mt-2 text-xs font-black ${artisan.available_today ? 'text-[#0B6B50]' : 'text-[#526159]'}`}>
+                        {artisan.available_today ? '● ' : ''}{availabilityLabel(artisan)}
+                      </p>
+                    )}
                     {artisan.service_titles?.length > 0 && <p className="mt-2 line-clamp-2 text-xs text-[#829087]">{artisan.service_titles.slice(0, 3).join(' · ')}</p>}
                     <p className="mt-4 line-clamp-3 min-h-[60px] text-sm leading-5 text-[#66736D]">{artisan.bio || 'Cet artisan n’a pas encore renseigné sa présentation.'}</p>
                     <div className="mt-5 flex gap-2">

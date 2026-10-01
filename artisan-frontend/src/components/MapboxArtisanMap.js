@@ -94,6 +94,11 @@ function PopupCard({ artisan, onNavigate }) {
           <p className="artisan-mapbox-card__rating">★ {Number(artisan.rating_average || 0).toFixed(1)} · {artisan.review_count} avis</p>
         ) : null}
 
+        <div className="artisan-mapbox-card__quick-badges">
+          {artisan.supports_home_service ? <span>Chez le client</span> : null}
+          {artisan.available_today ? <span className="is-available">Disponible aujourd’hui</span> : null}
+        </div>
+
         <p className="artisan-mapbox-card__meta"><AppIcon name="pin" className="h-3.5 w-3.5" /><span>{artisan.localisation || 'Localisation non précisée'}</span></p>
         {artisan.service_titles?.length ? (
           <p className="artisan-mapbox-card__meta"><AppIcon name="tools" className="h-3.5 w-3.5" /><span>{artisan.service_titles.slice(0, 2).join(' · ')}</span></p>
@@ -157,6 +162,17 @@ function normalizeCustomStyle(value) {
   return candidate;
 }
 
+function isMapDomReady(map) {
+  if (!map) return false;
+  try {
+    const container = map.getContainer?.();
+    const canvasContainer = map.getCanvasContainer?.();
+    return Boolean(container?.isConnected && canvasContainer?.isConnected);
+  } catch (_) {
+    return false;
+  }
+}
+
 export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const token = (process.env.REACT_APP_MAPBOX_TOKEN || '').trim();
   const rawCustomStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
@@ -170,6 +186,8 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const clientMarkerRef = useRef(null);
   const fallbackTimerRef = useRef(null);
   const basemapFailureCountRef = useRef(0);
+  const renderClustersRef = useRef(() => {});
+  const modeRef = useRef('standard');
   const [mode, setMode] = useState(customStyle ? 'custom' : 'standard');
   const [mapError, setMapError] = useState('');
   const [mapNotice, setMapNotice] = useState('');
@@ -216,7 +234,11 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
 
   const renderClusters = useCallback(() => {
     const map = mapRef.current;
-    if (!map) return;
+    // Marker.addTo() appelle map.getCanvasContainer().appendChild(...).
+    // Pendant l'initialisation, un changement de style ou un hot-reload,
+    // ce conteneur peut ne pas encore exister. On attend alors le prochain
+    // événement Mapbox (load/moveend/zoomend) au lieu de faire planter React.
+    if (!isMapDomReady(map)) return;
 
     clearRenderedMarkers();
 
@@ -288,6 +310,14 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     setVisibleCount(individualCount);
   }, [artisanById, clearRenderedMarkers, clusterIndex, navigate]);
 
+  useEffect(() => {
+    renderClustersRef.current = renderClusters;
+  }, [renderClusters]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   const activateFallbackBasemap = useCallback((reason = '') => {
     const map = mapRef.current;
     if (!map) return;
@@ -344,22 +374,24 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
     map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
 
+    const handleRender = () => renderClustersRef.current?.();
+
     map.on('load', () => {
       setMapError('');
       if (!customStyle) applyStandardConfig(map, 'standard');
-      renderClusters();
+      handleRender();
       scheduleBasemapHealthCheck(map, initialMode);
     });
 
-    map.on('moveend', renderClusters);
-    map.on('zoomend', renderClusters);
-    map.on('resize', renderClusters);
+    map.on('moveend', handleRender);
+    map.on('zoomend', handleRender);
+    map.on('resize', handleRender);
 
     map.on('error', (event) => {
       const message = String(event?.error?.message || '');
       const serious = /401|403|unauthor|forbidden|token|style|failed to fetch|network/i.test(message);
       if (!serious) return;
-      if (mode === 'fallback') return;
+      if (modeRef.current === 'fallback') return;
       if (basemapFailureCountRef.current === 0 && !customStyle) {
         basemapFailureCountRef.current += 1;
         setMapNotice('Le style Mapbox principal n’a pas chargé correctement. Passage automatique au style Rues.');
@@ -373,13 +405,16 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
 
     return () => {
       window.clearTimeout(fallbackTimerRef.current);
+      map.off('moveend', handleRender);
+      map.off('zoomend', handleRender);
+      map.off('resize', handleRender);
       clearRenderedMarkers();
       clientMarkerRef.current?.remove();
       clientMarkerRef.current = null;
-      map.remove();
       mapRef.current = null;
+      map.remove();
     };
-  }, [clearRenderedMarkers, customStyle, renderClusters, scheduleBasemapHealthCheck, token, activateFallbackBasemap]);
+  }, [clearRenderedMarkers, customStyle, scheduleBasemapHealthCheck, token, activateFallbackBasemap]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -391,7 +426,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.setStyle(nextStyle);
     map.once('style.load', () => {
       applyStandardConfig(map, mode);
-      renderClusters();
+      renderClustersRef.current?.();
       scheduleBasemapHealthCheck(map, mode);
     });
   }, [customStyle, mode, renderClusters, scheduleBasemapHealthCheck]);
@@ -402,25 +437,38 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map) return undefined;
 
-    clientMarkerRef.current?.remove();
-    clientMarkerRef.current = null;
+    const renderClientMarker = () => {
+      if (mapRef.current !== map || !isMapDomReady(map)) return;
 
-    if (position) {
-      const dot = document.createElement('div');
-      dot.className = 'artisan-mapbox-client-marker';
-      dot.setAttribute('aria-label', 'Votre position approximative');
-      clientMarkerRef.current = new mapboxgl.Marker({ element: dot, anchor: 'center' })
-        .setLngLat([Number(position[1]), Number(position[0])])
-        .setPopup(new mapboxgl.Popup({ offset: 18 }).setText('Votre position approximative'))
-        .addTo(map);
-    }
+      clientMarkerRef.current?.remove();
+      clientMarkerRef.current = null;
+
+      if (position) {
+        const dot = document.createElement('div');
+        dot.className = 'artisan-mapbox-client-marker';
+        dot.setAttribute('aria-label', 'Votre position approximative');
+        clientMarkerRef.current = new mapboxgl.Marker({ element: dot, anchor: 'center' })
+          .setLngLat([Number(position[1]), Number(position[0])])
+          .setPopup(new mapboxgl.Popup({ offset: 18 }).setText('Votre position approximative'))
+          .addTo(map);
+      }
+    };
+
+    if (isMapDomReady(map)) renderClientMarker();
+    else map.once('load', renderClientMarker);
+
+    return () => {
+      map.off('load', renderClientMarker);
+      clientMarkerRef.current?.remove();
+      clientMarkerRef.current = null;
+    };
   }, [position]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !isMapDomReady(map)) return;
 
     const bounds = new mapboxgl.LngLatBounds();
     points.forEach((artisan) => bounds.extend([Number(artisan.longitude), Number(artisan.latitude)]));
