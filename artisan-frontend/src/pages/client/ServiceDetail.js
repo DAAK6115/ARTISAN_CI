@@ -18,6 +18,18 @@ function apiErrorMessage(error, fallback) {
 
 const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
+
+function interventionZoneLabel(service) {
+  if (!service || service.mode_intervention === 'atelier') return 'Atelier uniquement';
+  if (service.zone_intervention_type === 'rayon' && service.rayon_intervention_km) {
+    return `Jusqu’à ${service.rayon_intervention_km} km par la route`;
+  }
+  if (service.zone_intervention_type === 'temps_trajet' && service.temps_intervention_max_minutes) {
+    return `Jusqu’à ${service.temps_intervention_max_minutes} min de trajet`;
+  }
+  return 'Sans limite spécifique';
+}
+
 export default function ServiceDetail({ publicMode = false }) {
   const { id } = useParams();
   const connectedClient = isAuthenticated() && getUserRole() === 'client';
@@ -157,7 +169,7 @@ export default function ServiceDetail({ publicMode = false }) {
 
             <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-2xl bg-[#F6F8F6] p-3"><p className="text-xs text-[#829087]">Durée estimée</p><p className="mt-1 font-black">{service.duree_minutes} min</p></div>
-              <div className="rounded-2xl bg-[#F6F8F6] p-3"><p className="text-xs text-[#829087]">Intervention</p><p className="mt-1 font-black">{service.mode_intervention_label}</p></div>
+              <div className="rounded-2xl bg-[#F6F8F6] p-3"><p className="text-xs text-[#829087]">Intervention</p><p className="mt-1 font-black">{service.mode_intervention_label}</p>{service.mode_intervention !== 'atelier' && <p className="mt-1 text-xs font-semibold text-[#66736D]">{interventionZoneLabel(service)}</p>}</div>
             </div>
 
             <div className="mt-6 flex items-end justify-between border-t border-black/5 pt-5">

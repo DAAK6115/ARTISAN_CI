@@ -72,10 +72,12 @@ export default function ArtisansList() {
   const [minRating, setMinRating] = useState('');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [homeServiceOnly, setHomeServiceOnly] = useState(false);
+  const [coveredOnly, setCoveredOnly] = useState(false);
   const [availability, setAvailability] = useState('');
   const [availableFilters, setAvailableFilters] = useState({
     verified: 0,
     home_service: 0,
+    covered: 0,
     availability_today: 0,
     availability_7d: 0,
     rating_options: [],
@@ -93,6 +95,7 @@ export default function ArtisansList() {
     currentMinRating = minRating,
     currentVerifiedOnly = verifiedOnly,
     currentHomeServiceOnly = homeServiceOnly,
+    currentCoveredOnly = coveredOnly,
     currentAvailability = availability,
     silent = false,
   } = {}) => {
@@ -110,6 +113,7 @@ export default function ArtisansList() {
       if (currentMinRating) params.min_rating = currentMinRating;
       if (currentVerifiedOnly) params.verified = 'true';
       if (currentHomeServiceOnly) params.home_service = 'true';
+      if (currentCoveredOnly) params.covered = 'true';
       if (currentAvailability) params.availability = currentAvailability;
       if (currentPosition) {
         params.lat = currentPosition[0];
@@ -131,6 +135,7 @@ export default function ArtisansList() {
       setAvailableFilters(data.available_filters || {
         verified: 0,
         home_service: 0,
+        covered: 0,
         availability_today: 0,
         availability_7d: 0,
         rating_options: [],
@@ -145,11 +150,11 @@ export default function ArtisansList() {
       setArtisans([]);
       setCategories([]);
       setRouting({ requested: Boolean(currentPosition), configured: false, provider: 'openrouteservice', profile: 'driving-car' });
-      setAvailableFilters({ verified: 0, home_service: 0, availability_today: 0, availability_7d: 0, rating_options: [] });
+      setAvailableFilters({ verified: 0, home_service: 0, covered: 0, availability_today: 0, availability_7d: 0, rating_options: [] });
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [position, radius, proximityMode, travelTime, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, availability]);
+  }, [position, radius, proximityMode, travelTime, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, coveredOnly, availability]);
 
   const activateNearbySearch = useCallback(() => {
     if (!navigator.geolocation) {
@@ -237,11 +242,12 @@ export default function ArtisansList() {
     setMessage('Recherche élargie activée : vous pouvez saisir une ville, une commune, un métier ou une spécialité.');
   };
 
-  const advancedFilterCount = [Boolean(minRating), verifiedOnly, homeServiceOnly, Boolean(availability)].filter(Boolean).length;
+  const advancedFilterCount = [Boolean(minRating), verifiedOnly, homeServiceOnly, coveredOnly, Boolean(availability)].filter(Boolean).length;
   const clearAdvancedFilters = () => {
     setMinRating('');
     setVerifiedOnly(false);
     setHomeServiceOnly(false);
+    setCoveredOnly(false);
     setAvailability('');
   };
 
@@ -363,7 +369,7 @@ export default function ArtisansList() {
           ))}
         </div>
 
-        {(availableFilters.verified > 0 || availableFilters.home_service > 0 || availableFilters.availability_today > 0 || availableFilters.availability_7d > 0 || availableFilters.rating_options?.length > 0) && (
+        {(availableFilters.verified > 0 || availableFilters.home_service > 0 || availableFilters.covered > 0 || availableFilters.availability_today > 0 || availableFilters.availability_7d > 0 || availableFilters.rating_options?.length > 0) && (
           <div className="mt-4 border-t border-black/5 pt-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#718078]">Filtres disponibles dans cette recherche</p>
@@ -390,6 +396,15 @@ export default function ArtisansList() {
                   className={`rounded-full border px-3 py-2 text-xs font-black transition ${homeServiceOnly ? 'border-[#0B6B50] bg-[#0B6B50] text-white' : 'border-[#DDE5E0] bg-white text-[#334139]'}`}
                 >
                   Chez le client · {availableFilters.home_service}
+                </button>
+              )}
+              {scope === 'nearby' && availableFilters.covered > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCoveredOnly((value) => !value)}
+                  className={`rounded-full border px-3 py-2 text-xs font-black transition ${coveredOnly ? 'border-[#0B6B50] bg-[#0B6B50] text-white' : 'border-[#DDE5E0] bg-white text-[#334139]'}`}
+                >
+                  ✓ Dans ma zone · {availableFilters.covered}
                 </button>
               )}
               {(availableFilters.availability_today > 0 || availableFilters.availability_7d > 0) && (
@@ -489,6 +504,8 @@ export default function ArtisansList() {
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <RatingBadge artisan={artisan} />
                       {artisan.supports_home_service && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">Chez le client</span>}
+                      {artisan.client_coverage_status === 'covered' && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">✓ Votre position est couverte</span>}
+                      {artisan.client_coverage_status === 'outside' && <span className="rounded-full bg-[#FFF1E6] px-2 py-1 text-[10px] font-black text-[#A4561D]">Hors zone habituelle</span>}
                     </div>
                     {availabilityLabel(artisan) && (
                       <p className={`mt-2 text-xs font-black ${artisan.available_today ? 'text-[#0B6B50]' : 'text-[#526159]'}`}>

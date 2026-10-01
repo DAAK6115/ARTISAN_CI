@@ -275,3 +275,13 @@
     width: min(230px, calc(100% - 20px));
   }
 }
+
+.artisan-mapbox-card__quick-badges span.is-covered {
+  background: #eaf4f0;
+  color: #0b6b50;
+}
+
+.artisan-mapbox-card__quick-badges span.is-outside {
+  background: #fff1e6;
+  color: #a4561d;
+}

@@ -544,3 +544,86 @@ class RouteToArtisanTests(APITestCase):
             'lng': -3.9600,
         }, format='json')
         self.assertIn(response.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
+
+
+class InterventionCoverageDiscoveryTests(APITestCase):
+    def _artisan_with_zone(self, username, zone_type, *, radius=None, minutes=None):
+        artisan = CustomUser.objects.create_user(
+            email=f'{username}@example.com',
+            username=username,
+            password='StrongPass123!',
+            role='artisan',
+        )
+        portfolio = Portfolio.objects.create(
+            artisan=artisan,
+            localisation='Cocody',
+            latitude=Decimal('5.398830'),
+            longitude=Decimal('-3.956508'),
+            visible=True,
+        )
+        Service.objects.create(
+            artisan=artisan,
+            titre=f'Service {username}',
+            description='Intervention à domicile.',
+            prix=Decimal('10000'),
+            categorie='btp',
+            is_active=True,
+            mode_intervention='chez_client',
+            zone_intervention_type=zone_type,
+            rayon_intervention_km=radius,
+            temps_intervention_max_minutes=minutes,
+        )
+        return artisan, portfolio
+
+    @patch('portfolio.views.driving_route_metrics')
+    def test_radius_zone_marks_client_as_covered_using_road_distance(self, metrics_mock):
+        _artisan, portfolio = self._artisan_with_zone('radius-covered', 'rayon', radius=10)
+        metrics_mock.return_value = {
+            str(portfolio.id): {'distance_km': 7.5, 'duration_minutes': 18},
+        }
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'lat': '5.390000',
+            'lng': '-3.970000',
+            'route_metrics': 'true',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.data['results'][0]
+        self.assertEqual(row['client_coverage_status'], 'covered')
+        self.assertEqual(row['client_coverage_label'], 'Votre position est couverte')
+        self.assertEqual(response.data['available_filters']['covered'], 1)
+
+    @patch('portfolio.views.driving_route_metrics')
+    def test_travel_time_zone_marks_client_outside_when_duration_exceeds_limit(self, metrics_mock):
+        _artisan, portfolio = self._artisan_with_zone('time-outside', 'temps_trajet', minutes=15)
+        metrics_mock.return_value = {
+            str(portfolio.id): {'distance_km': 4.0, 'duration_minutes': 22},
+        }
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'lat': '5.390000',
+            'lng': '-3.970000',
+            'route_metrics': 'true',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['results'][0]['client_coverage_status'], 'outside')
+        self.assertEqual(response.data['available_filters']['covered'], 0)
+
+    @patch('portfolio.views.driving_route_metrics')
+    def test_covered_filter_only_keeps_artisans_covering_client_position(self, metrics_mock):
+        _a1, covered = self._artisan_with_zone('covered-zone', 'rayon', radius=10)
+        _a2, outside = self._artisan_with_zone('outside-zone', 'rayon', radius=5)
+        metrics_mock.return_value = {
+            str(covered.id): {'distance_km': 8.0, 'duration_minutes': 20},
+            str(outside.id): {'distance_km': 8.0, 'duration_minutes': 20},
+        }
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'lat': '5.390000',
+            'lng': '-3.970000',
+            'route_metrics': 'true',
+            'covered': 'true',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 1)
+        self.assertEqual(response.data['results'][0]['artisan_nom'], 'covered-zone')

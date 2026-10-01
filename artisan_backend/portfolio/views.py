@@ -224,6 +224,61 @@ class PortfolioMapView(generics.ListAPIView):
         values = sorted({service.mode_intervention for service in services if service.mode_intervention})
         return [{'value': value, 'label': labels.get(value, value)} for value in values]
 
+
+    @staticmethod
+    def _client_coverage(portfolio, services, coordinates):
+        home_services = [
+            service for service in services
+            if service.mode_intervention in {'chez_client', 'les_deux'}
+        ]
+        if not home_services:
+            return {
+                'status': 'workshop_only',
+                'label': 'Atelier uniquement',
+                'service': None,
+            }
+        if not coordinates:
+            return {
+                'status': 'location_required',
+                'label': 'Activez votre position pour vérifier la zone',
+                'service': None,
+            }
+
+        road_distance = getattr(portfolio, 'route_distance_km_value', None)
+        straight_distance = getattr(portfolio, 'distance_km_value', None)
+        duration = getattr(portfolio, 'route_duration_minutes_value', None)
+        unknown = False
+
+        for service in home_services:
+            zone_type = getattr(service, 'zone_intervention_type', 'sans_limite') or 'sans_limite'
+            if zone_type == 'sans_limite':
+                return {'status': 'covered', 'label': 'Votre position est couverte', 'service': service.titre}
+            if zone_type == 'rayon':
+                limit = getattr(service, 'rayon_intervention_km', None)
+                distance = road_distance
+                if limit is None or distance is None:
+                    unknown = True
+                elif float(distance) <= float(limit):
+                    return {'status': 'covered', 'label': 'Votre position est couverte', 'service': service.titre}
+            elif zone_type == 'temps_trajet':
+                limit = getattr(service, 'temps_intervention_max_minutes', None)
+                if limit is None or duration is None:
+                    unknown = True
+                elif int(duration) <= int(limit):
+                    return {'status': 'covered', 'label': 'Votre position est couverte', 'service': service.titre}
+
+        if unknown:
+            return {
+                'status': 'unknown',
+                'label': 'Zone à confirmer avec l’artisan',
+                'service': None,
+            }
+        return {
+            'status': 'outside',
+            'label': 'Hors de la zone habituelle',
+            'service': None,
+        }
+
     @staticmethod
     def _next_available_slot(services, days=7):
         """Retourne le premier créneau réellement réservable dans la fenêtre."""
@@ -330,9 +385,10 @@ class PortfolioMapView(generics.ListAPIView):
         min_rating = self._minimum_rating()
         verified_only = self._bool_param('verified')
         home_service_only = self._bool_param('home_service')
+        covered_only = self._bool_param('covered')
         availability_filter = self._availability_filter()
         travel_time_minutes = self._travel_time_minutes()
-        route_metrics_requested = self._bool_param('route_metrics') or travel_time_minutes is not None
+        route_metrics_requested = self._bool_param('route_metrics') or travel_time_minutes is not None or covered_only
 
         if scope not in {'all', 'nearby'}:
             raise ValidationError({'scope': 'Mode de recherche invalide.'})
@@ -341,6 +397,9 @@ class PortfolioMapView(generics.ListAPIView):
         portfolios = list(queryset.order_by('artisan__username'))
         coordinates = self._coordinates()
         radius = self._radius() if scope == 'nearby' and travel_time_minutes is None else None
+
+        if covered_only and coordinates is None:
+            raise ValidationError({'localisation': 'Votre position est requise pour vérifier la zone d’intervention.'})
 
         portfolios = self._with_distances(portfolios, coordinates)
 
@@ -444,11 +503,17 @@ class PortfolioMapView(generics.ListAPIView):
             portfolio.available_today_value = bool(next_slot and next_slot['is_today'])
             portfolio.available_7d_value = bool(next_slot)
 
+            coverage = self._client_coverage(portfolio, eligible_services, coordinates)
+            portfolio.client_coverage_status_value = coverage['status']
+            portfolio.client_coverage_label_value = coverage['label']
+            portfolio.client_coverage_service_value = coverage['service']
+
         # Facettes avant application des filtres avancés : elles représentent
         # les possibilités réellement disponibles pour la recherche courante.
         available_filters = {
             'verified': sum(1 for p in portfolios if p.artisan.verification_status == 'verified'),
             'home_service': sum(1 for p in portfolios if getattr(p, 'supports_home_service_value', False)),
+            'covered': sum(1 for p in portfolios if getattr(p, 'client_coverage_status_value', None) == 'covered'),
             'availability_today': sum(1 for p in portfolios if getattr(p, 'available_today_value', False)),
             'availability_7d': sum(1 for p in portfolios if getattr(p, 'available_7d_value', False)),
             'rating_options': self._rating_facets(portfolios),
@@ -458,6 +523,8 @@ class PortfolioMapView(generics.ListAPIView):
             portfolios = [p for p in portfolios if p.artisan.verification_status == 'verified']
         if home_service_only:
             portfolios = [p for p in portfolios if getattr(p, 'supports_home_service_value', False)]
+        if covered_only:
+            portfolios = [p for p in portfolios if getattr(p, 'client_coverage_status_value', None) == 'covered']
         if min_rating is not None:
             portfolios = [
                 p for p in portfolios

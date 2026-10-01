@@ -48,6 +48,9 @@ class PortfolioSerializer(serializers.ModelSerializer):
     next_available_at = serializers.SerializerMethodField()
     next_available_service = serializers.SerializerMethodField()
     available_today = serializers.SerializerMethodField()
+    client_coverage_status = serializers.SerializerMethodField()
+    client_coverage_label = serializers.SerializerMethodField()
+    client_coverage_service = serializers.SerializerMethodField()
 
     # Le GPS du navigateur peut envoyer beaucoup plus de 6 décimales.
     # On accepte d'abord la valeur comme flottant puis on la normalise vers
@@ -66,7 +69,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'route_distance_km', 'route_duration_minutes', 'distance_source',
             'rating_average', 'review_count', 'supports_home_service',
             'intervention_modes', 'next_available_at', 'next_available_service',
-            'available_today',
+            'available_today', 'client_coverage_status', 'client_coverage_label',
+            'client_coverage_service',
         ]
         read_only_fields = [
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
@@ -75,7 +79,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'route_distance_km', 'route_duration_minutes', 'distance_source',
             'rating_average', 'review_count', 'supports_home_service',
             'intervention_modes', 'next_available_at', 'next_available_service',
-            'available_today',
+            'available_today', 'client_coverage_status', 'client_coverage_label',
+            'client_coverage_service',
         ]
 
 
@@ -168,6 +173,15 @@ class PortfolioSerializer(serializers.ModelSerializer):
 
     def get_available_today(self, obj):
         return bool(getattr(obj, 'available_today_value', False))
+
+    def get_client_coverage_status(self, obj):
+        return getattr(obj, 'client_coverage_status_value', None)
+
+    def get_client_coverage_label(self, obj):
+        return getattr(obj, 'client_coverage_label_value', None)
+
+    def get_client_coverage_service(self, obj):
+        return getattr(obj, 'client_coverage_service_value', None)
 
     def get_artisan_verified(self, obj):
         return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')

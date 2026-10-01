@@ -35,6 +35,12 @@ class Service(models.Model):
         ('les_deux', 'Chez le client ou en atelier'),
     ]
 
+    ZONE_INTERVENTION_CHOICES = [
+        ('sans_limite', 'Sans limite spécifique'),
+        ('rayon', 'Rayon kilométrique'),
+        ('temps_trajet', 'Temps de trajet maximum'),
+    ]
+
     artisan = models.ForeignKey(
         CustomUser,
         on_delete=models.CASCADE,
@@ -67,11 +73,23 @@ class Service(models.Model):
         choices=MODE_INTERVENTION_CHOICES,
         default='chez_client',
     )
+    zone_intervention_type = models.CharField(
+        max_length=20,
+        choices=ZONE_INTERVENTION_CHOICES,
+        default='sans_limite',
+        help_text='Limite appliquée lorsque la prestation peut être réalisée chez le client.',
+    )
     rayon_intervention_km = models.PositiveSmallIntegerField(
         blank=True,
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(500)],
-        help_text='Rayon indicatif de déplacement. Vide si non applicable.',
+        help_text='Rayon routier maximal quand la zone est limitée par distance.',
+    )
+    temps_intervention_max_minutes = models.PositiveSmallIntegerField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(5), MaxValueValidator(240)],
+        help_text='Temps de trajet routier maximal lorsque la zone est limitée par durée.',
     )
 
     date_creation = models.DateTimeField(auto_now_add=True)

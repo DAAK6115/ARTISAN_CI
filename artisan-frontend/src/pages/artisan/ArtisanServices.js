@@ -11,7 +11,9 @@ const EMPTY_SERVICE = {
   duree_minutes: 60,
   delai_reservation_heures: 2,
   mode_intervention: 'chez_client',
+  zone_intervention_type: 'sans_limite',
   rayon_intervention_km: '',
+  temps_intervention_max_minutes: '',
   mode_tarification: 'fixe',
 };
 
@@ -100,9 +102,13 @@ export default function ArtisanServices() {
     formData.append('duree_minutes', newService.duree_minutes);
     formData.append('delai_reservation_heures', newService.delai_reservation_heures);
     formData.append('mode_intervention', newService.mode_intervention);
+    formData.append('zone_intervention_type', newService.mode_intervention === 'atelier' ? 'sans_limite' : newService.zone_intervention_type);
     formData.append('mode_tarification', newService.mode_tarification);
-    if (newService.rayon_intervention_km !== '') {
+    if (newService.mode_intervention !== 'atelier' && newService.zone_intervention_type === 'rayon' && newService.rayon_intervention_km !== '') {
       formData.append('rayon_intervention_km', newService.rayon_intervention_km);
+    }
+    if (newService.mode_intervention !== 'atelier' && newService.zone_intervention_type === 'temps_trajet' && newService.temps_intervention_max_minutes !== '') {
+      formData.append('temps_intervention_max_minutes', newService.temps_intervention_max_minutes);
     }
     if (newService.image) formData.append('image', newService.image);
 
@@ -137,7 +143,9 @@ export default function ArtisanServices() {
       duree_minutes: service.duree_minutes || 60,
       delai_reservation_heures: service.delai_reservation_heures ?? 2,
       mode_intervention: service.mode_intervention || 'chez_client',
+      zone_intervention_type: service.zone_intervention_type || 'sans_limite',
       rayon_intervention_km: service.rayon_intervention_km || '',
+      temps_intervention_max_minutes: service.temps_intervention_max_minutes || '',
       mode_tarification: service.mode_tarification || 'fixe',
     });
     setEditingService(service);
@@ -258,17 +266,50 @@ export default function ArtisanServices() {
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Rayon de déplacement (km, facultatif)</label>
-          <input
-            type="number"
-            min="1"
-            max="500"
-            className="border p-2 rounded w-full"
-            value={newService.rayon_intervention_km}
-            onChange={(event) => setNewService({ ...newService, rayon_intervention_km: event.target.value })}
-          />
-        </div>
+        {newService.mode_intervention !== 'atelier' && (
+          <>
+            <div>
+              <label className="block text-sm font-medium mb-1">Zone d’intervention à domicile</label>
+              <select
+                className="border p-2 rounded w-full"
+                value={newService.zone_intervention_type}
+                onChange={(event) => setNewService({
+                  ...newService,
+                  zone_intervention_type: event.target.value,
+                  rayon_intervention_km: event.target.value === 'rayon' ? newService.rayon_intervention_km : '',
+                  temps_intervention_max_minutes: event.target.value === 'temps_trajet' ? newService.temps_intervention_max_minutes : '',
+                })}
+              >
+                <option value="sans_limite">Sans limite spécifique</option>
+                <option value="rayon">Rayon kilométrique maximal</option>
+                <option value="temps_trajet">Temps de trajet maximal</option>
+              </select>
+              <p className="mt-1 text-xs text-[#829087]">Cette limite est vérifiée à partir de votre position GPS professionnelle.</p>
+            </div>
+
+            {newService.zone_intervention_type === 'rayon' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Rayon routier maximal (km)</label>
+                <input type="number" min="1" max="500" className="border p-2 rounded w-full" value={newService.rayon_intervention_km} onChange={(event) => setNewService({ ...newService, rayon_intervention_km: event.target.value })} required />
+              </div>
+            )}
+
+            {newService.zone_intervention_type === 'temps_trajet' && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Temps de trajet maximal</label>
+                <select className="border p-2 rounded w-full" value={newService.temps_intervention_max_minutes} onChange={(event) => setNewService({ ...newService, temps_intervention_max_minutes: event.target.value })} required>
+                  <option value="">-- Sélectionner --</option>
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                  <option value="45">45 min</option>
+                  <option value="60">1 heure</option>
+                  <option value="90">1 h 30</option>
+                  <option value="120">2 heures</option>
+                </select>
+              </div>
+            )}
+          </>
+        )}
 
         <div className="sm:col-span-2 grid grid-cols-1 gap-4">
           <label className="text-sm">Mode de tarification
@@ -328,7 +369,9 @@ export default function ArtisanServices() {
                 <p>⏱ {service.duree_minutes} min</p>
                 <p>📍 {service.mode_intervention_label}</p>
                 <p>🕒 Délai minimum : {service.delai_reservation_heures} h</p>
-                {service.rayon_intervention_km && <p>🚗 Rayon : {service.rayon_intervention_km} km</p>}
+                {service.mode_intervention !== 'atelier' && service.zone_intervention_type === 'rayon' && service.rayon_intervention_km && <p>🚗 Zone : jusqu’à {service.rayon_intervention_km} km par la route</p>}
+                {service.mode_intervention !== 'atelier' && service.zone_intervention_type === 'temps_trajet' && service.temps_intervention_max_minutes && <p>⏱ Zone : jusqu’à {service.temps_intervention_max_minutes} min de trajet</p>}
+                {service.mode_intervention !== 'atelier' && service.zone_intervention_type === 'sans_limite' && <p>🌍 Zone : sans limite spécifique</p>}
               </div>
               {service.image && (
                 <img src={service.image} alt={service.titre} className="mt-3 rounded h-40 object-cover w-full" />
