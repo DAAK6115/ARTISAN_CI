@@ -24,6 +24,7 @@ import ArtisanClientsPage from './pages/artisan/ArtisanClientsPage';
 import ArtisanProfilePage from './pages/artisan/ArtisanProfilePage';
 import ArtisanProfileEditPage from './pages/artisan/ArtisanProfileEditPage';
 import ListeConversationsArtisanPage from './pages/artisan/ListeConversationsArtisanPage';
+import ArtisanNotificationsPage from './pages/artisan/ArtisanNotificationsPage';
 
 import ClientDashboard from './pages/client/ClientDashboard';
 import ArtisansList from './pages/client/ArtisansList';
@@ -166,6 +167,7 @@ export default function App() {
         <Route path="/artisan/mes-conversations" element={<ArtisanRoute withNavigation><ListeConversationsArtisanPage /></ArtisanRoute>} />
         <Route path="/artisan/messagerie/:username" element={<ArtisanRoute withNavigation><ChatPage /></ArtisanRoute>} />
         <Route path="/artisan/support" element={<ArtisanRoute withNavigation><SupportPage /></ArtisanRoute>} />
+        <Route path="/artisan/notifications" element={<ArtisanRoute withNavigation><ArtisanNotificationsPage /></ArtisanRoute>} />
 
         {/* Administration */}
         <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

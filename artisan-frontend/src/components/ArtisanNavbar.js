@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import axios from '../utils/axiosInstance';
 import AppIcon from './AppIcon';
 import LogoutButton from './LogoutButton';
 import BrandLogo from './BrandLogo';
+import useAutoRefresh from '../hooks/useAutoRefresh';
 
 const primary = [
   ['/artisan/dashboard', 'home', 'Accueil'],
@@ -18,15 +20,29 @@ const secondary = [
   ['/artisan/portfolio', 'image', 'Portfolio'],
   ['/artisan/certifications', 'award', 'Certifications'],
   ['/artisan/mes-conversations', 'chat', 'Messages'],
+  ['/artisan/notifications', 'bell', 'Notifications'],
   ['/artisan/support', 'chat', 'Support'],
 ];
 
 export default function ArtisanNavbar() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const isActive = (path) => location.pathname.startsWith(path);
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  const loadUnread = async () => {
+    try {
+      const response = await axios.get('/notifications/unread-count/');
+      setUnreadCount(Number(response.data?.unread_count || 0));
+    } catch {
+      setUnreadCount(0);
+    }
+  };
+
+  useEffect(() => { loadUnread(); }, [location.pathname]);
+  useAutoRefresh(loadUnread, { intervalMs: 15000 });
 
   const NavItem = ({ item, mobile = false }) => {
     const [path, icon, label] = item;
@@ -36,7 +52,14 @@ export default function ArtisanNavbar() {
         to={path}
         className={`flex items-center gap-2 rounded-2xl transition ${mobile ? 'px-3 py-3' : 'px-3 py-2'} ${active ? 'bg-[#EAF4F0] font-bold text-[#0B6B50]' : 'text-[#536158] hover:bg-[#F4F6F4] hover:text-[#111815]'}`}
       >
-        <AppIcon name={icon} className="h-[18px] w-[18px]" />
+        <span className="relative grid h-7 w-7 shrink-0 place-items-center">
+          <AppIcon name={icon} className="h-[18px] w-[18px]" />
+          {path.includes('notifications') && unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#E07A32] px-1 text-center text-[9px] font-black leading-4 text-white">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </span>
         <span className="text-sm">{label}</span>
       </Link>
     );
@@ -55,6 +78,18 @@ export default function ArtisanNavbar() {
           </nav>
 
           <div className="hidden items-center gap-2 lg:flex">
+            <Link
+              to="/artisan/notifications"
+              className="relative grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139] hover:bg-[#EAF4F0] hover:text-[#0B6B50]"
+              aria-label="Notifications"
+            >
+              <AppIcon name="bell" className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-[#E07A32] px-1 text-center text-[10px] font-black leading-5 text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
             <details className="relative">
               <summary className="cursor-pointer list-none rounded-2xl border border-black/5 bg-[#F7F8F6] px-4 py-2 text-sm font-bold text-[#445148] hover:bg-[#EFF2EF]">
                 Gestion
@@ -68,14 +103,28 @@ export default function ArtisanNavbar() {
             </details>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            className="grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139] lg:hidden"
-            aria-label="Ouvrir le menu artisan"
-          >
-            <AppIcon name="menu" className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2 lg:hidden">
+            <Link
+              to="/artisan/notifications"
+              className="relative grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139]"
+              aria-label="Notifications"
+            >
+              <AppIcon name="bell" className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#E07A32] px-1 text-center text-[9px] font-black leading-4 text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="grid h-10 w-10 place-items-center rounded-xl bg-[#F4F6F4] text-[#334139]"
+              aria-label="Ouvrir le menu artisan"
+            >
+              <AppIcon name="menu" className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </header>
 

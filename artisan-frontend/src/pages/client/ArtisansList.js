@@ -1,48 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import LocationActions from '../../components/LocationActions';
-import { buildNavigationLinks } from '../../utils/location';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
-import 'leaflet/dist/leaflet.css';
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-  iconUrl: require('leaflet/dist/images/marker-icon.png'),
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-});
-
-const DEFAULT_CENTER = [5.35995, -4.00826];
-
-function MapViewport({ artisans, position }) {
-  const map = useMap();
-
-  useEffect(() => {
-    const points = artisans
-      .filter((artisan) => artisan.latitude != null && artisan.longitude != null)
-      .map((artisan) => [Number(artisan.latitude), Number(artisan.longitude)]);
-
-    if (position) points.push(position);
-
-    if (points.length === 0) {
-      map.setView(DEFAULT_CENTER, 10);
-      return;
-    }
-
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-
-    map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 14 });
-  }, [artisans, map, position]);
-
-  return null;
-}
+import MapboxArtisanMap from '../../components/MapboxArtisanMap';
 
 function categorySummary(artisan) {
   const labels = artisan.service_category_labels || [];
@@ -282,116 +244,7 @@ export default function ArtisansList() {
 
       {view === 'map' && (
         <div className="mt-4 overflow-hidden rounded-[28px] border border-black/5 bg-white p-2 shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
-          <MapContainer center={DEFAULT_CENTER} zoom={10} style={{ height: '520px', width: '100%', borderRadius: '22px' }}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-            <MapViewport artisans={mapPoints} position={position} />
-            {position && (
-              <CircleMarker center={position} radius={9} pathOptions={{ color: '#0B6B50', fillColor: '#0B6B50', fillOpacity: 0.9 }}>
-                <Popup>Votre position approximative</Popup>
-              </CircleMarker>
-            )}
-            {mapPoints.map((artisan) => (
-              <Marker key={artisan.id} position={[Number(artisan.latitude), Number(artisan.longitude)]}>
-                <Popup minWidth={250} maxWidth={270} className="artisan-map-popup">
-                  {(() => {
-                    const navigation = buildNavigationLinks(
-                      artisan.latitude,
-                      artisan.longitude,
-                      artisan.artisan_nom || 'Artisan ARTISAN_CI',
-                    );
-                    return (
-                      <div className="w-[254px] overflow-hidden bg-white text-[#1E2A24]">
-                        <div className="relative h-16 overflow-hidden bg-gradient-to-br from-[#DCEDE6] via-[#F4F7F5] to-[#FFF1E4]">
-                          {artisan.photo_couverture ? (
-                            <img src={artisan.photo_couverture} alt="" className="h-full w-full object-cover" />
-                          ) : null}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
-                          {artisan.distance_km != null ? (
-                            <span className="absolute right-2.5 top-2.5 rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-[#0B6B50] shadow-sm">
-                              {Number(artisan.distance_km).toFixed(1)} km
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="relative px-3.5 pb-3.5 pt-6">
-                          <ArtisanAvatar artisan={artisan} className="absolute -top-5 left-3.5 h-10 w-10 rounded-xl border-[3px] border-white shadow-md" />
-
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <h3 className="min-w-0 flex-1 truncate text-[15px] font-black text-[#111815]">{artisan.artisan_nom}</h3>
-                              {artisan.artisan_verified ? (
-                                <span className="shrink-0 rounded-full bg-[#EAF4F0] px-1.5 py-0.5 text-[9px] font-black text-[#0B6B50]">✓ Vérifié</span>
-                              ) : null}
-                            </div>
-                            <p className="mt-0.5 min-h-[28px] line-clamp-2 text-[10px] font-black uppercase leading-4 tracking-[0.06em] text-[#0B6B50]">
-                              {categorySummary(artisan)}
-                            </p>
-                            <div className="mt-1.5"><RatingBadge artisan={artisan} compact /></div>
-                          </div>
-
-                          <div className="mt-2.5 space-y-1.5 text-[12px] text-[#5F6D65]">
-                            <p className="flex min-w-0 items-start gap-1.5">
-                              <AppIcon name="pin" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0B6B50]" />
-                              <span className="line-clamp-2 leading-4">{artisan.localisation || 'Localisation non précisée'}</span>
-                            </p>
-                            {artisan.service_titles?.length > 0 ? (
-                              <p className="flex min-w-0 items-start gap-1.5">
-                                <AppIcon name="tools" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0B6B50]" />
-                                <span className="line-clamp-2 leading-4">{artisan.service_titles.slice(0, 2).join(' · ')}</span>
-                              </p>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-3 gap-2">
-                            <Link
-                              to={`/artisans/${artisan.artisan_nom}`}
-                              className="flex h-10 items-center justify-center rounded-xl bg-[#0B6B50] px-2 text-center text-[11px] font-black tracking-[0.01em] text-white shadow-sm"
-                              style={{ color: '#FFFFFF' }}
-                            >
-                              Profil
-                            </Link>
-                            <Link
-                              to={`/client/messagerie/${artisan.artisan_nom}`}
-                              className="flex h-10 items-center justify-center rounded-xl bg-[#F2F5F3] px-2 text-center text-[11px] font-black text-[#334139]"
-                              aria-label={`Écrire à ${artisan.artisan_nom}`}
-                            >
-                              Message
-                            </Link>
-                            {navigation ? (
-                              <a
-                                href={navigation.google}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex h-10 items-center justify-center rounded-xl border border-[#DDE5E0] bg-white px-2 text-center text-[11px] font-black text-[#0B6B50]"
-                              >
-                                Itinéraire
-                              </a>
-                            ) : <span />}
-                          </div>
-
-                          {navigation ? (
-                            <details className="mt-2 border-t border-black/5 pt-2">
-                              <summary className="cursor-pointer list-none text-center text-[10px] font-bold text-[#718078] hover:text-[#0B6B50]">
-                                Autres GPS
-                              </summary>
-                              <div className="mt-2">
-                                <LocationActions
-                                  latitude={artisan.latitude}
-                                  longitude={artisan.longitude}
-                                  label={artisan.artisan_nom || 'Artisan ARTISAN_CI'}
-                                  compact
-                                />
-                              </div>
-                            </details>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
+          <MapboxArtisanMap artisans={mapPoints} position={position} />
           {!loading && mapPoints.length === 0 && (
             <div className="border-t border-black/5 px-4 py-4 text-center text-sm text-[#718078]">
               Aucun artisan géolocalisé ne correspond à cette recherche. Essayez d’augmenter le rayon ou d’élargir la recherche.

@@ -38,8 +38,8 @@ export default function ClientNavbar() {
 
   const loadUnread = async () => {
     try {
-      const response = await axios.get('/notifications/');
-      setUnreadCount((response.data || []).filter((item) => !item.lu).length);
+      const response = await axios.get('/notifications/unread-count/');
+      setUnreadCount(Number(response.data?.unread_count || 0));
     } catch {
       setUnreadCount(0);
     }
