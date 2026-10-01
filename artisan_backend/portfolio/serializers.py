@@ -34,6 +34,9 @@ class PortfolioSerializer(serializers.ModelSerializer):
     artisan_id = serializers.IntegerField(source='artisan.id', read_only=True)
     artisan_verified = serializers.SerializerMethodField()
     artisan_verification_status = serializers.CharField(source='artisan.verification_status', read_only=True)
+    artisan_country_code = serializers.CharField(source='artisan.country_code', read_only=True)
+    artisan_country_calling_code = serializers.CharField(source='artisan.country_calling_code', read_only=True)
+    artisan_currency_code = serializers.CharField(source='artisan.currency_code', read_only=True)
     service_categories = serializers.SerializerMethodField()
     service_category_labels = serializers.SerializerMethodField()
     service_titles = serializers.SerializerMethodField()
@@ -62,7 +65,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
         model = Portfolio
         fields = [
             'id', 'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
-            'artisan_verification_status', 'bio', 'photo_profil', 'photo_couverture',
+            'artisan_verification_status', 'artisan_country_code', 'artisan_country_calling_code',
+            'artisan_currency_code', 'bio', 'photo_profil', 'photo_couverture',
             'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
             'longitude', 'visible', 'realisations', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
@@ -74,7 +78,8 @@ class PortfolioSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
-            'artisan_verification_status', 'service_categories',
+            'artisan_verification_status', 'artisan_country_code', 'artisan_country_calling_code',
+            'artisan_currency_code', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
             'route_distance_km', 'route_duration_minutes', 'distance_source',
             'rating_average', 'review_count', 'supports_home_service',

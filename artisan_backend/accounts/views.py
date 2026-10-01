@@ -17,6 +17,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, Toke
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from integrations.countries import get_countries
 from .models import CustomUser, PasswordResetCode
 from .permissions import IsAdmin, IsArtisan, IsArtisanOrAdmin
 from .serializers import (
@@ -32,6 +33,13 @@ GENERIC_RESET_MESSAGE = (
     "Si cette adresse email correspond à un compte, "
     "un code de réinitialisation a été envoyé."
 )
+
+
+class CountryReferenceView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"countries": get_countries()})
 
 
 class LoginView(APIView):

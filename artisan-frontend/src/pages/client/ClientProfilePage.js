@@ -4,6 +4,7 @@ import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import LogoutButton from '../../components/LogoutButton';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { countryDisplayName, countryFlag } from '../../utils/country';
 
 export default function ClientProfilePage() {
   const [profile, setProfile] = useState(null);
@@ -47,6 +48,7 @@ export default function ClientProfilePage() {
             <div className="-mt-10 flex items-end gap-4"><span className="grid h-20 w-20 place-items-center rounded-[24px] border-4 border-white bg-[#111815] text-xl font-black text-white shadow-lg">{String(profile.username || 'C').slice(0,2).toUpperCase()}</span><div className="pb-1"><h2 className="text-2xl font-black">{profile.username}</h2><p className="text-sm text-[#718078]">Compte client ARTISAN_CI</p></div></div>
             <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Email</p><p className="mt-1 break-all text-sm font-black">{profile.email}</p></div>
+              <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Pays</p><p className="mt-1 text-sm font-black">{countryFlag(profile.country_code)} {countryDisplayName(profile.country_code)}</p><p className="mt-1 text-xs text-[#718078]">{profile.country_calling_code} · {profile.currency_code}</p></div>
               <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Numéro Mobile Money</p><p className="mt-1 text-sm font-black">{profile.numero_momo || 'Non renseigné'}</p></div>
               <Link to="/client/favoris" className="rounded-2xl bg-[#FFF7F5] p-4"><p className="text-xs font-bold text-[#A75A50]">Favoris</p><p className="mt-1 text-2xl font-black text-[#C64A3F]">{favoriteCount}</p></Link>
             </div>

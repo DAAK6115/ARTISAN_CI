@@ -8,6 +8,7 @@ import PublicHeader from '../components/PublicHeader';
 import ReportButton from '../components/ReportButton';
 import { getUserRole, isAuthenticated } from '../utils/auth';
 import useAutoRefresh from '../hooks/useAutoRefresh';
+import { countryDisplayName, countryFlag } from '../utils/country';
 
 const formatPrice = (value) => new Intl.NumberFormat('fr-FR').format(Number(value || 0));
 
@@ -87,6 +88,7 @@ export default function ArtisanPublicProfilePage() {
                   <div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black tracking-tight sm:text-3xl">{portfolio.artisan_nom}</h1>{portfolio.artisan_verified && <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]"><AppIcon name="shield" className="h-3.5 w-3.5" /> Artisan vérifié</span>}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-[#66736D]">
                     {portfolio.localisation && <span className="inline-flex items-center gap-1.5"><AppIcon name="pin" className="h-4 w-4 text-[#0B6B50]" />{portfolio.localisation}</span>}
+                    {portfolio.artisan_country_code && <span className="rounded-full bg-[#F2F5F3] px-2.5 py-1 text-xs font-black text-[#536158]">{countryFlag(portfolio.artisan_country_code)} {countryDisplayName(portfolio.artisan_country_code)}</span>}
                     {averageRating && <span className="rounded-full bg-[#FFF7DD] px-2.5 py-1 text-xs font-black text-[#926800]">★ {averageRating} · {reviews.length} avis</span>}
                   </div>
                 </div>

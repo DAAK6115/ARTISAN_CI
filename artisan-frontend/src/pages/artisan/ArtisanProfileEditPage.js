@@ -5,6 +5,7 @@ import ArtisanMap from '../../components/ArtisanMap';
 import LocationActions from '../../components/LocationActions';
 import AddressAutocomplete from '../../components/AddressAutocomplete';
 import { reverseGeocode } from '../../utils/location';
+import CountrySelect from '../../components/CountrySelect';
 
 export default function ArtisanProfileEditPage() {
   const [form, setForm] = useState({
@@ -18,6 +19,7 @@ export default function ArtisanProfileEditPage() {
     latitude: null,
     longitude: null,
   });
+  const [account, setAccount] = useState({ country_code: 'CI' });
   const [preview, setPreview] = useState('');
   const [profilePreview, setProfilePreview] = useState('');
   const [message, setMessage] = useState('');
@@ -27,7 +29,12 @@ export default function ArtisanProfileEditPage() {
 
   const load = async () => {
     try {
-      const { data } = await axios.get('/portfolio/me/');
+      const [portfolioResponse, accountResponse] = await Promise.all([
+        axios.get('/portfolio/me/'),
+        axios.get('/accounts/profile/me/'),
+      ]);
+      const data = portfolioResponse.data;
+      setAccount({ country_code: accountResponse.data.country_code || 'CI' });
       setForm({
         bio: data.bio || '',
         site_web: data.site_web || '',
@@ -119,7 +126,10 @@ export default function ArtisanProfileEditPage() {
     }
 
     try {
-      await axios.patch('/portfolio/me/', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await Promise.all([
+        axios.patch('/portfolio/me/', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+        axios.put('/accounts/profile/update/', { country_code: account.country_code }),
+      ]);
       setMessage('Profil professionnel mis à jour.');
       await load();
     } catch (error) {
@@ -186,6 +196,8 @@ export default function ArtisanProfileEditPage() {
               <span className="mt-1 block text-xs font-normal text-[#829087]">Format international : + indicatif pays + numéro. Ex. +225…, +33…, +1…. Espaces et tirets acceptés.</span>
             </label>
           </div>
+
+          <CountrySelect value={account.country_code} onChange={(country_code) => setAccount({ country_code })} label="Pays d’activité principal" />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-bold">Site web<input type="url" value={form.site_web} onChange={(e) => setForm({ ...form, site_web: e.target.value })} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" /></label>

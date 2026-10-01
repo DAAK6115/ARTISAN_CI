@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -143,3 +145,56 @@ class ArtisanVerificationRequestTests(APITestCase):
         artisan.refresh_from_db()
         self.assertEqual(artisan.verification_status, "pending")
         self.assertIsNotNone(artisan.verification_requested_at)
+
+
+class CountryInternationalizationTests(APITestCase):
+    country_ci = {
+        "code": "CI", "name": "Côte d’Ivoire", "dial_code": "+225", "currency": "XOF", "flag": "🇨🇮",
+    }
+    country_fr = {
+        "code": "FR", "name": "France", "dial_code": "+33", "currency": "EUR", "flag": "🇫🇷",
+    }
+
+    @patch("accounts.views.get_countries")
+    def test_country_reference_is_public(self, mocked):
+        mocked.return_value = [self.country_ci, self.country_fr]
+        response = self.client.get("/api/accounts/reference/countries/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["countries"]), 2)
+        self.assertEqual(response.data["countries"][0]["code"], "CI")
+
+    @patch("accounts.serializers.get_country")
+    def test_registration_derives_calling_code_and_currency(self, mocked):
+        mocked.return_value = self.country_fr
+        response = self.client.post(
+            "/api/accounts/register/",
+            {
+                "email": "international@example.com",
+                "username": "international-user",
+                "password": "StrongPassword!2026",
+                "role": "client",
+                "country_code": "FR",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = CustomUser.objects.get(email="international@example.com")
+        self.assertEqual(user.country_code, "FR")
+        self.assertEqual(user.country_calling_code, "+33")
+        self.assertEqual(user.currency_code, "EUR")
+
+    @patch("accounts.serializers.get_country", return_value=None)
+    def test_registration_rejects_unknown_country(self, _mocked):
+        response = self.client.post(
+            "/api/accounts/register/",
+            {
+                "email": "invalid-country@example.com",
+                "username": "invalid-country",
+                "password": "StrongPassword!2026",
+                "role": "client",
+                "country_code": "ZZ",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("country_code", response.data)

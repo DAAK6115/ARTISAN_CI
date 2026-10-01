@@ -346,3 +346,11 @@ LOGGING = {
         "level": "INFO",
     },
 }
+# Référentiel international des pays (INT 1)
+COUNTRIESNOW_BASE_URL = os.getenv("COUNTRIESNOW_BASE_URL", "https://countriesnow.space")
+COUNTRY_REFERENCE_TIMEOUT_SECONDS = int(os.getenv("COUNTRY_REFERENCE_TIMEOUT_SECONDS", "6"))
+COUNTRY_REFERENCE_CACHE_SECONDS = int(os.getenv("COUNTRY_REFERENCE_CACHE_SECONDS", "86400"))
+RESTCOUNTRIES_API_KEY = os.getenv("RESTCOUNTRIES_API_KEY", "")
+RESTCOUNTRIES_V5_BASE_URL = os.getenv("RESTCOUNTRIES_V5_BASE_URL", "https://api.restcountries.com")
+RESTCOUNTRIES_LEGACY_URL = os.getenv("RESTCOUNTRIES_LEGACY_URL", "https://restcountries.com/v3.1/all")
+

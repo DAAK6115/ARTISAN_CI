@@ -54,6 +54,9 @@ class CustomUser(AbstractUser):
 
     numero_momo = models.CharField(max_length=20, blank=True, null=True)
     qr_wave = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
+    country_code = models.CharField(max_length=2, default="CI", db_index=True)
+    country_calling_code = models.CharField(max_length=12, default="+225")
+    currency_code = models.CharField(max_length=3, default="XOF")
     verification_status = models.CharField(
         max_length=16,
         choices=ARTISAN_VERIFICATION_CHOICES,

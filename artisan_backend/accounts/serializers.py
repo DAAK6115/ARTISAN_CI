@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from common.validators import validate_image_upload
+from integrations.countries import get_country
 from .models import CustomUser
 
 
@@ -23,7 +24,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ["id", "email", "username", "password", "role"]
+        fields = ["id", "email", "username", "password", "role", "country_code"]
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -39,6 +40,13 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Ce nom d'utilisateur est déjà utilisé.")
         return value
 
+    def validate_country_code(self, value):
+        country = get_country(value)
+        if not country:
+            raise serializers.ValidationError("Pays invalide ou momentanément indisponible.")
+        self._validated_country = country
+        return country["code"]
+
     def validate(self, attrs):
         candidate = CustomUser(
             email=attrs.get("email"),
@@ -52,6 +60,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        country = getattr(self, "_validated_country", None) or get_country(validated_data.get("country_code", "CI"))
+        if country:
+            validated_data["country_code"] = country["code"]
+            validated_data["country_calling_code"] = country["dial_code"]
+            validated_data["currency_code"] = country.get("currency") or "XOF"
         return CustomUser.objects.create_user(**validated_data)
 
 
@@ -62,13 +75,15 @@ class UserSerializer(serializers.ModelSerializer):
             "id", "email", "username", "role", "is_active",
             "verification_status", "verification_requested_at",
             "verification_reviewed_at", "verification_note",
+            "country_code", "country_calling_code", "currency_code",
         ]
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["username", "numero_momo", "qr_wave"]
+        fields = ["username", "numero_momo", "qr_wave", "country_code", "country_calling_code", "currency_code"]
+        read_only_fields = ["country_calling_code", "currency_code"]
 
     def validate_username(self, value):
         value = value.strip()
@@ -78,6 +93,21 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         if queryset.exists():
             raise serializers.ValidationError("Ce nom d'utilisateur est déjà utilisé.")
         return value
+
+    def validate_country_code(self, value):
+        country = get_country(value)
+        if not country:
+            raise serializers.ValidationError("Pays invalide ou momentanément indisponible.")
+        self._validated_country = country
+        return country["code"]
+
+    def update(self, instance, validated_data):
+        country = getattr(self, "_validated_country", None)
+        if country:
+            validated_data["country_code"] = country["code"]
+            validated_data["country_calling_code"] = country["dial_code"]
+            validated_data["currency_code"] = country.get("currency") or instance.currency_code
+        return super().update(instance, validated_data)
 
     def validate_qr_wave(self, value):
         if value is None:
@@ -99,9 +129,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "verification_requested_at",
             "verification_reviewed_at",
             "verification_note",
+            "country_code",
+            "country_calling_code",
+            "currency_code",
         ]
         read_only_fields = [
             "email", "username", "role", "is_active",
             "verification_status", "verification_requested_at",
             "verification_reviewed_at", "verification_note",
+            "country_calling_code", "currency_code",
         ]
