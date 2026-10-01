@@ -38,6 +38,9 @@ class PortfolioSerializer(serializers.ModelSerializer):
     service_category_labels = serializers.SerializerMethodField()
     service_titles = serializers.SerializerMethodField()
     distance_km = serializers.SerializerMethodField()
+    route_distance_km = serializers.SerializerMethodField()
+    route_duration_minutes = serializers.SerializerMethodField()
+    distance_source = serializers.SerializerMethodField()
     rating_average = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
     supports_home_service = serializers.SerializerMethodField()
@@ -60,6 +63,7 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'site_web', 'facebook', 'whatsapp', 'localisation', 'latitude',
             'longitude', 'visible', 'realisations', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
+            'route_distance_km', 'route_duration_minutes', 'distance_source',
             'rating_average', 'review_count', 'supports_home_service',
             'intervention_modes', 'next_available_at', 'next_available_service',
             'available_today',
@@ -68,6 +72,7 @@ class PortfolioSerializer(serializers.ModelSerializer):
             'artisan', 'artisan_id', 'artisan_nom', 'artisan_verified',
             'artisan_verification_status', 'service_categories',
             'service_category_labels', 'service_titles', 'distance_km',
+            'route_distance_km', 'route_duration_minutes', 'distance_source',
             'rating_average', 'review_count', 'supports_home_service',
             'intervention_modes', 'next_available_at', 'next_available_service',
             'available_today',
@@ -93,6 +98,21 @@ class PortfolioSerializer(serializers.ModelSerializer):
     def get_distance_km(self, obj):
         value = getattr(obj, 'distance_km_value', None)
         return round(float(value), 2) if value is not None else None
+
+    def get_route_distance_km(self, obj):
+        value = getattr(obj, 'route_distance_km_value', None)
+        return round(float(value), 2) if value is not None else None
+
+    def get_route_duration_minutes(self, obj):
+        value = getattr(obj, 'route_duration_minutes_value', None)
+        return int(value) if value is not None else None
+
+    def get_distance_source(self, obj):
+        if getattr(obj, 'route_distance_km_value', None) is not None:
+            return 'road'
+        if getattr(obj, 'distance_km_value', None) is not None:
+            return 'straight_line'
+        return None
 
 
     def _rating_stats(self, obj):

@@ -67,15 +67,22 @@ function ClusterBadge({ count }) {
   );
 }
 
+function travelLabel(artisan) {
+  if (artisan?.route_distance_km != null) {
+    const distance = `${Number(artisan.route_distance_km).toFixed(1)} km`;
+    const duration = artisan.route_duration_minutes != null ? ` · ${artisan.route_duration_minutes} min` : '';
+    return `${distance}${duration}`;
+  }
+  if (artisan?.distance_km != null) return `${Number(artisan.distance_km).toFixed(1)} km`;
+  return null;
+}
+
 function PopupCard({ artisan, onNavigate }) {
   return (
     <article className="artisan-mapbox-card">
       <div className="artisan-mapbox-card__cover">
         {artisan.photo_couverture ? <img src={artisan.photo_couverture} alt="" /> : null}
         <div className="artisan-mapbox-card__veil" />
-        {artisan.distance_km != null ? (
-          <span className="artisan-mapbox-card__distance">{Number(artisan.distance_km).toFixed(1)} km</span>
-        ) : null}
       </div>
 
       <div className="artisan-mapbox-card__body">
@@ -98,6 +105,27 @@ function PopupCard({ artisan, onNavigate }) {
           {artisan.supports_home_service ? <span>Chez le client</span> : null}
           {artisan.available_today ? <span className="is-available">Disponible aujourd’hui</span> : null}
         </div>
+
+        {artisan.distance_source === 'road' ? (
+          <>
+            <div className="artisan-mapbox-card__travel-metrics" aria-label="Distance et durée estimées par la route">
+              {artisan.route_distance_km != null ? (
+                <span><strong>🚗</strong>{Number(artisan.route_distance_km).toFixed(1)} km</span>
+              ) : null}
+              {artisan.route_duration_minutes != null ? (
+                <span><strong>⏱</strong>{artisan.route_duration_minutes} min</span>
+              ) : null}
+            </div>
+            <p className="artisan-mapbox-card__travel-note">Distance et durée estimées par la route</p>
+          </>
+        ) : artisan.distance_km != null ? (
+          <>
+            <div className="artisan-mapbox-card__travel-metrics">
+              <span><strong>📍</strong>{Number(artisan.distance_km).toFixed(1)} km</span>
+            </div>
+            <p className="artisan-mapbox-card__travel-note">Distance approximative à vol d’oiseau</p>
+          </>
+        ) : null}
 
         <p className="artisan-mapbox-card__meta"><AppIcon name="pin" className="h-3.5 w-3.5" /><span>{artisan.localisation || 'Localisation non précisée'}</span></p>
         {artisan.service_titles?.length ? (
@@ -173,6 +201,12 @@ function isMapDomReady(map) {
   }
 }
 
+function logMapNotice(message) {
+  if (process.env.NODE_ENV === 'development' && message) {
+    console.warn(`[Mapbox] ${message}`);
+  }
+}
+
 export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const token = (process.env.REACT_APP_MAPBOX_TOKEN || '').trim();
   const rawCustomStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
@@ -190,14 +224,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const modeRef = useRef('standard');
   const [mode, setMode] = useState(customStyle ? 'custom' : 'standard');
   const [mapError, setMapError] = useState('');
-  const [mapNotice, setMapNotice] = useState('');
   const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    if (rawCustomStyle && !customStyle) {
-      setMapNotice('Le style personnalisé renseigné est un exemple. Mapbox Standard est utilisé automatiquement.');
-    }
-  }, [customStyle, rawCustomStyle]);
 
   const points = useMemo(
     () => artisans.filter((artisan) => artisan.latitude != null && artisan.longitude != null),
@@ -325,7 +352,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     try {
       map.setStyle(OSM_FALLBACK_STYLE);
       setMode('fallback');
-      setMapNotice('Fond OpenStreetMap activé automatiquement : Mapbox n’a pas chargé son fond de carte correctement.');
+      logMapNotice('Fond OpenStreetMap activé automatiquement : Mapbox n’a pas chargé son fond de carte correctement.');
       setMapError(reason || '');
     } catch (_) {
       setMapError('Impossible de charger le fond de carte. Vérifiez votre connexion et votre jeton Mapbox.');
@@ -343,7 +370,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       if (!loaded || !tilesLoaded) {
         if (currentMode === 'standard' && basemapFailureCountRef.current === 0) {
           basemapFailureCountRef.current += 1;
-          setMapNotice('Mapbox Standard tarde à charger. Passage automatique au style Rues.');
+          logMapNotice('Mapbox Standard tarde à charger. Passage automatique au style Rues.');
           setMode('streets');
         } else {
           activateFallbackBasemap();
@@ -394,7 +421,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       if (modeRef.current === 'fallback') return;
       if (basemapFailureCountRef.current === 0 && !customStyle) {
         basemapFailureCountRef.current += 1;
-        setMapNotice('Le style Mapbox principal n’a pas chargé correctement. Passage automatique au style Rues.');
+        logMapNotice('Le style Mapbox principal n’a pas chargé correctement. Passage automatique au style Rues.');
         setMode('streets');
       } else {
         activateFallbackBasemap('Mapbox n’a pas pu charger toutes les données du fond de carte.');
@@ -516,12 +543,6 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-white/60 bg-[#10271F]/90 px-4 py-2 text-[11px] font-bold text-white shadow-xl backdrop-blur-md">
         {points.length} artisan{points.length > 1 ? 's' : ''} · {visibleCount} visible{visibleCount > 1 ? 's' : ''}
       </div>
-
-      {mapNotice ? (
-        <div className="absolute left-3 top-16 z-20 max-w-[360px] rounded-2xl border border-amber-100 bg-white/95 px-3 py-2 text-xs font-semibold text-amber-800 shadow-lg backdrop-blur-md">
-          {mapNotice}
-        </div>
-      ) : null}
 
       {mapError ? (
         <div className="absolute inset-x-4 bottom-16 z-20 rounded-2xl border border-red-100 bg-white/95 px-4 py-3 text-sm font-semibold text-red-700 shadow-lg">{mapError}</div>

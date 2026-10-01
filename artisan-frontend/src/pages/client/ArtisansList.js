@@ -43,6 +43,16 @@ function availabilityLabel(artisan) {
   return `Prochain créneau ${day} à ${time}`;
 }
 
+function travelLabel(artisan) {
+  if (artisan?.route_distance_km != null) {
+    const distance = `${Number(artisan.route_distance_km).toFixed(1)} km`;
+    const duration = artisan.route_duration_minutes != null ? ` · ${artisan.route_duration_minutes} min` : '';
+    return `${distance}${duration}`;
+  }
+  if (artisan?.distance_km != null) return `${Number(artisan.distance_km).toFixed(1)} km à vol d’oiseau`;
+  return null;
+}
+
 export default function ArtisansList() {
   const [artisans, setArtisans] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -66,6 +76,7 @@ export default function ArtisansList() {
     availability_7d: 0,
     rating_options: [],
   });
+  const [routing, setRouting] = useState({ requested: false, configured: false, provider: 'openrouteservice', profile: 'driving-car' });
 
   const loadArtisans = useCallback(async ({
     currentPosition = position,
@@ -97,6 +108,7 @@ export default function ArtisansList() {
       if (currentPosition) {
         params.lat = currentPosition[0];
         params.lng = currentPosition[1];
+        params.route_metrics = 'true';
       }
       if (currentScope === 'nearby') params.radius = Number(currentRadius);
 
@@ -106,6 +118,7 @@ export default function ArtisansList() {
 
       setArtisans(data.results || []);
       setCategories(nextCategories);
+      setRouting(data.routing || { requested: Boolean(currentPosition), configured: false, provider: 'openrouteservice', profile: 'driving-car' });
       setAvailableFilters(data.available_filters || {
         verified: 0,
         home_service: 0,
@@ -122,6 +135,7 @@ export default function ArtisansList() {
       setMessage(typeof detail === 'string' ? detail : 'Impossible de charger les artisans pour le moment.');
       setArtisans([]);
       setCategories([]);
+      setRouting({ requested: Boolean(currentPosition), configured: false, provider: 'openrouteservice', profile: 'driving-car' });
       setAvailableFilters({ verified: 0, home_service: 0, availability_today: 0, availability_7d: 0, rating_options: [] });
     } finally {
       if (!silent) setLoading(false);
@@ -337,6 +351,11 @@ export default function ArtisansList() {
       </section>
 
       {message && <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">{message}</div>}
+      {position && routing.requested && !routing.configured && (
+        <div className="mt-4 rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-xs font-semibold text-[#66736D]">
+          Les temps de trajet routiers ne sont pas configurés sur le backend. Les distances affichées restent provisoirement à vol d’oiseau.
+        </div>
+      )}
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-[#718078]">{resultLabel}</p>
@@ -383,7 +402,9 @@ export default function ArtisansList() {
                         </div>
                         <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[#718078]"><AppIcon name="pin" className="h-3.5 w-3.5" />{artisan.localisation || 'Localisation non renseignée'}</p>
                       </div>
-                      {artisan.distance_km != null && <span className="rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]">{Number(artisan.distance_km).toFixed(1)} km</span>}
+                      {travelLabel(artisan) && (
+                        <span className="rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]">{travelLabel(artisan)}</span>
+                      )}
                     </div>
 
                     <p className="mt-3 text-xs font-black uppercase tracking-[0.08em] text-[#0B6B50]">{categorySummary(artisan)}</p>

@@ -13,6 +13,7 @@ from accounts.permissions import IsArtisan
 from appointments.domain import generate_available_slots
 from services.models import Service
 from reviews.models import Review
+from integrations.routing import driving_route_metrics, routing_configured
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
 
@@ -266,6 +267,36 @@ class PortfolioMapView(generics.ListAPIView):
             result.append(portfolio)
         return result
 
+    def _with_route_metrics(self, portfolios, coordinates, requested=False):
+        for portfolio in portfolios:
+            portfolio.route_distance_km_value = None
+            portfolio.route_duration_minutes_value = None
+
+        if not requested or not coordinates or not portfolios:
+            return portfolios
+
+        destinations = [
+            {
+                'id': portfolio.id,
+                'coordinates': (float(portfolio.latitude), float(portfolio.longitude)),
+            }
+            for portfolio in portfolios
+            if portfolio.latitude is not None and portfolio.longitude is not None
+        ]
+        metrics = driving_route_metrics(coordinates, destinations)
+        for portfolio in portfolios:
+            metric = metrics.get(str(portfolio.id))
+            if not metric:
+                continue
+            portfolio.route_distance_km_value = metric.get('distance_km')
+            portfolio.route_duration_minutes_value = metric.get('duration_minutes')
+        return portfolios
+
+    @staticmethod
+    def _effective_distance(portfolio):
+        road = getattr(portfolio, 'route_distance_km_value', None)
+        return road if road is not None else getattr(portfolio, 'distance_km_value', None)
+
     @staticmethod
     def _rating_facets(portfolios):
         options = []
@@ -287,6 +318,7 @@ class PortfolioMapView(generics.ListAPIView):
         verified_only = self._bool_param('verified')
         home_service_only = self._bool_param('home_service')
         availability_filter = self._availability_filter()
+        route_metrics_requested = self._bool_param('route_metrics')
 
         if scope not in {'all', 'nearby'}:
             raise ValidationError({'scope': 'Mode de recherche invalide.'})
@@ -297,6 +329,23 @@ class PortfolioMapView(generics.ListAPIView):
         radius = self._radius() if scope == 'nearby' else None
 
         portfolios = self._with_distances(portfolios, coordinates)
+
+        # Un trajet routier ne peut pas être plus court que la distance à vol
+        # d'oiseau. Ce premier filtre évite donc d'envoyer au fournisseur des
+        # destinations qui sont déjà hors du rayon demandé.
+        if scope == 'nearby':
+            if coordinates is None:
+                raise ValidationError({'localisation': 'Votre position est requise pour une recherche autour de vous.'})
+            portfolios = [
+                portfolio for portfolio in portfolios
+                if portfolio.distance_km_value is not None and portfolio.distance_km_value <= radius
+            ]
+
+        portfolios = self._with_route_metrics(
+            portfolios,
+            coordinates,
+            requested=route_metrics_requested,
+        )
 
         artisan_ids = [portfolio.artisan_id for portfolio in portfolios]
         rating_rows = (
@@ -310,12 +359,13 @@ class PortfolioMapView(generics.ListAPIView):
             portfolio.rating_average_value = stats.get('average')
             portfolio.review_count_value = stats.get('count', 0)
 
+        # Si openrouteservice a répondu, le rayon correspond désormais à la
+        # distance routière. Sinon on conserve le fallback géodésique.
         if scope == 'nearby':
-            if coordinates is None:
-                raise ValidationError({'localisation': 'Votre position est requise pour une recherche autour de vous.'})
             portfolios = [
                 portfolio for portfolio in portfolios
-                if portfolio.distance_km_value is not None and portfolio.distance_km_value <= radius
+                if self._effective_distance(portfolio) is not None
+                and self._effective_distance(portfolio) <= radius
             ]
 
         # Les catégories sont calculées avant leur propre filtre pour conserver
@@ -392,8 +442,8 @@ class PortfolioMapView(generics.ListAPIView):
         if coordinates:
             portfolios.sort(
                 key=lambda portfolio: (
-                    portfolio.distance_km_value is None,
-                    portfolio.distance_km_value if portfolio.distance_km_value is not None else float('inf'),
+                    self._effective_distance(portfolio) is None,
+                    self._effective_distance(portfolio) if self._effective_distance(portfolio) is not None else float('inf'),
                     portfolio.artisan.username.lower(),
                 )
             )
@@ -406,6 +456,12 @@ class PortfolioMapView(generics.ListAPIView):
             'total': len(portfolios),
             'scope': scope,
             'radius_km': radius,
+            'routing': {
+                'requested': route_metrics_requested,
+                'configured': routing_configured(),
+                'provider': 'openrouteservice',
+                'profile': 'driving-car',
+            },
         })
 
 

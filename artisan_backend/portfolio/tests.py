@@ -1,5 +1,8 @@
 from decimal import Decimal
+from unittest.mock import Mock, patch
 
+from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -240,6 +243,76 @@ class PortfolioDiscoveryTests(APITestCase):
         row = response.data['results'][0]
         self.assertEqual(row['artisan_nom'], 'available-pro')
         self.assertIsNotNone(row['next_available_at'])
+
+
+    @override_settings(
+        OPENROUTESERVICE_API_KEY='test-key',
+        OPENROUTESERVICE_BASE_URL='https://api.heigit.org/openrouteservice',
+        OPENROUTESERVICE_CACHE_SECONDS=1,
+        OPENROUTESERVICE_MATRIX_MAX_DESTINATIONS=100,
+    )
+    @patch('integrations.routing.requests.post')
+    def test_route_metrics_expose_real_road_distance_and_duration(self, mock_post):
+        cache.clear()
+        artisan = self._artisan('route-pro', 'Cocody', Decimal('5.365000'), Decimal('-4.005000'))
+        self._service(artisan, 'Dépannage plomberie', 'btp')
+
+        provider_response = Mock()
+        provider_response.raise_for_status.return_value = None
+        provider_response.json.return_value = {
+            'distances': [[3.8]],
+            'durations': [[660]],
+        }
+        mock_post.return_value = provider_response
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'all',
+            'lat': '5.35995',
+            'lng': '-4.00826',
+            'route_metrics': 'true',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.data['results'][0]
+        self.assertEqual(float(row['route_distance_km']), 3.8)
+        self.assertEqual(row['route_duration_minutes'], 11)
+        self.assertEqual(row['distance_source'], 'road')
+        self.assertTrue(response.data['routing']['configured'])
+        self.assertIn('/v2/matrix/driving-car', mock_post.call_args.args[0])
+        payload = mock_post.call_args.kwargs['json']
+        self.assertEqual(payload['sources'], ['0'])
+        self.assertEqual(payload['destinations'], ['1'])
+        self.assertEqual(payload['metrics'], ['distance', 'duration'])
+
+    @override_settings(
+        OPENROUTESERVICE_API_KEY='test-key',
+        OPENROUTESERVICE_BASE_URL='https://api.heigit.org/openrouteservice',
+        OPENROUTESERVICE_CACHE_SECONDS=1,
+    )
+    @patch('integrations.routing.requests.post')
+    def test_nearby_radius_uses_road_distance_when_available(self, mock_post):
+        cache.clear()
+        artisan = self._artisan('detour-pro', 'Cocody', Decimal('5.365000'), Decimal('-4.005000'))
+        self._service(artisan, 'Service avec détour', 'btp')
+
+        provider_response = Mock()
+        provider_response.raise_for_status.return_value = None
+        provider_response.json.return_value = {
+            'distances': [[8.0]],
+            'durations': [[900]],
+        }
+        mock_post.return_value = provider_response
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'nearby',
+            'lat': '5.35995',
+            'lng': '-4.00826',
+            'radius': '5',
+            'route_metrics': 'true',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 0)
 
 
 class PortfolioLocationAndPhoneValidationTests(APITestCase):

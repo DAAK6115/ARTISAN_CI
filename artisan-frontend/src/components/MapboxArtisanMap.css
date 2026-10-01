@@ -59,7 +59,6 @@
 .artisan-mapbox-card__cover { position:relative; height:72px; overflow:hidden; background:linear-gradient(135deg,#DCEDE6,#F5F7F5 58%,#FFF1E4); }
 .artisan-mapbox-card__cover img { width:100%; height:100%; object-fit:cover; }
 .artisan-mapbox-card__veil { position:absolute; inset:0; background:linear-gradient(to top,rgba(0,0,0,.26),transparent 65%); }
-.artisan-mapbox-card__distance { position:absolute; top:9px; right:9px; border-radius:999px; background:rgba(255,255,255,.95); color:#0B6B50; padding:4px 8px; font-size:10px; font-weight:900; }
 .artisan-mapbox-card__body { position:relative; padding:25px 14px 13px; }
 .artisan-mapbox-card__avatar { position:absolute; top:-23px; left:14px; width:46px; height:46px; border:3px solid #fff; border-radius:15px; overflow:hidden; background:#0B6B50; box-shadow:0 6px 18px rgba(16,39,31,.16); }
 .artisan-mapbox-card__avatar img { width:100%; height:100%; object-fit:cover; }
@@ -107,4 +106,44 @@
 .artisan-mapbox-card__quick-badges span.is-available {
   background: #eaf4f0;
   color: #0b6b50;
+}
+
+.artisan-mapbox-card__travel-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.artisan-mapbox-card__travel-metrics span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 31px;
+  border: 1px solid #DDE5E0;
+  border-radius: 11px;
+  background: #F7F9F8;
+  color: #334139;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.artisan-mapbox-card__travel-metrics span:only-child {
+  grid-column: 1 / -1;
+}
+
+.artisan-mapbox-card__travel-metrics strong {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.artisan-mapbox-card__travel-note {
+  margin: 7px 0 0;
+  color: #829087;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.35;
 }

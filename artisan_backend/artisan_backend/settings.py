@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-
 ARTISAN_ENV = os.getenv("ARTISAN_ENV", "development").strip().lower()
 IS_PRODUCTION = ARTISAN_ENV == "production"
 
@@ -47,7 +46,6 @@ if render_hostname and render_hostname not in ALLOWED_HOSTS:
 
 
 INSTALLED_APPS = [
-    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -57,7 +55,6 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
-    "geniuspay",
     "common.apps.CommonConfig",
     "accounts",
     "services",
@@ -229,6 +226,17 @@ DEFAULT_FROM_EMAIL = os.getenv(
 )
 
 
+# GEO 4 - openrouteservice / HeiGIT. La clé reste exclusivement côté Django.
+OPENROUTESERVICE_API_KEY = os.getenv("OPENROUTESERVICE_API_KEY", "").strip()
+OPENROUTESERVICE_BASE_URL = os.getenv(
+    "OPENROUTESERVICE_BASE_URL",
+    "https://api.heigit.org/openrouteservice",
+).rstrip("/")
+OPENROUTESERVICE_TIMEOUT_SECONDS = float(os.getenv("OPENROUTESERVICE_TIMEOUT_SECONDS", "6"))
+OPENROUTESERVICE_CACHE_SECONDS = int(os.getenv("OPENROUTESERVICE_CACHE_SECONDS", "900"))
+OPENROUTESERVICE_MATRIX_MAX_DESTINATIONS = int(os.getenv("OPENROUTESERVICE_MATRIX_MAX_DESTINATIONS", "100"))
+
+
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 if REDIS_URL:
     CHANNEL_LAYERS = {
@@ -279,23 +287,6 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
 ]
 
-CORS_ALLOW_CREDENTIALS = True
-
-AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "artisan_refresh")
-AUTH_REFRESH_COOKIE_PATH = "/api/accounts/session/"
-AUTH_REFRESH_COOKIE_SECURE = env_bool("AUTH_REFRESH_COOKIE_SECURE", IS_PRODUCTION)
-AUTH_REFRESH_COOKIE_SAMESITE = os.getenv("AUTH_REFRESH_COOKIE_SAMESITE", "Lax")
-
-if AUTH_REFRESH_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
-    raise ImproperlyConfigured(
-        "AUTH_REFRESH_COOKIE_SAMESITE doit valoir Lax, Strict ou None."
-    )
-
-if AUTH_REFRESH_COOKIE_SAMESITE == "None" and not AUTH_REFRESH_COOKIE_SECURE:
-    raise ImproperlyConfigured(
-        "SameSite=None exige un cookie Secure."
-    )
-
 
 # En-têtes et cookies de sécurité.
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -338,18 +329,3 @@ LOGGING = {
         "level": "INFO",
     },
 }
-
-
-# --- GeniusPay ARTISAN_CI ---
-GENIUSPAY = {
-    "API_KEY": os.getenv("GENIUSPAY_API_KEY", "").strip(),
-    "API_SECRET": os.getenv("GENIUSPAY_API_SECRET", "").strip(),
-    "WEBHOOK_SECRET": os.getenv("GENIUSPAY_WEBHOOK_SECRET", "").strip() or None,
-    "SANDBOX": env_bool("GENIUSPAY_SANDBOX", True),
-    "TIMEOUT": int(os.getenv("GENIUSPAY_TIMEOUT", "30")),
-}
-
-ARTISAN_MOBILE_URL = os.getenv(
-    "ARTISAN_MOBILE_URL",
-    "http://localhost:5173",
-).rstrip("/")
