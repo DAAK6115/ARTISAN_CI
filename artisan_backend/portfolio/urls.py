@@ -9,6 +9,7 @@ from .views import (
     TravelTimeIsochroneView,
     AddressSearchView,
     ReverseAddressView,
+    ApproximateLocationView,
 )
 
 urlpatterns = [
@@ -19,6 +20,7 @@ urlpatterns = [
     path('map/', PortfolioMapView.as_view(), name='portfolio-map'),
     path('geocoding/search/', AddressSearchView.as_view(), name='address-search'),
     path('geocoding/reverse/', ReverseAddressView.as_view(), name='address-reverse'),
+    path('location/approximate/', ApproximateLocationView.as_view(), name='approximate-location'),
     path('route-to-artisan/', RouteToArtisanView.as_view(), name='route-to-artisan'),
     path('isochrone/', TravelTimeIsochroneView.as_view(), name='travel-time-isochrone'),
 ]

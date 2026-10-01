@@ -285,3 +285,8 @@
   background: #fff1e6;
   color: #a4561d;
 }
+
+.artisan-mapbox-client-marker--approximate {
+  opacity: 0.76;
+  box-shadow: 0 0 0 8px rgba(224, 122, 50, 0.14), 0 5px 14px rgba(17, 24, 21, 0.18);
+}

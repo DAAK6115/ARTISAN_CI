@@ -246,6 +246,13 @@ NOMINATIM_TIMEOUT_SECONDS = float(os.getenv("NOMINATIM_TIMEOUT_SECONDS", "6"))
 NOMINATIM_CACHE_SECONDS = int(os.getenv("NOMINATIM_CACHE_SECONDS", "86400"))
 NOMINATIM_USER_AGENT = os.getenv("NOMINATIM_USER_AGENT", "ARTISAN_CI/1.0")
 
+# GEO 9 - localisation IP de secours. Toujours considérée comme approximative.
+GEOJS_BASE_URL = os.getenv("GEOJS_BASE_URL", "https://get.geojs.io").rstrip("/")
+GEOJS_TIMEOUT_SECONDS = float(os.getenv("GEOJS_TIMEOUT_SECONDS", "5"))
+GEOJS_CACHE_SECONDS = int(os.getenv("GEOJS_CACHE_SECONDS", "3600"))
+GEOJS_TRUST_PROXY_HEADERS = env_bool("GEOJS_TRUST_PROXY_HEADERS", IS_PRODUCTION)
+GEOJS_ALLOW_SELF_LOOKUP = env_bool("GEOJS_ALLOW_SELF_LOOKUP", DEBUG)
+
 
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 if REDIS_URL:

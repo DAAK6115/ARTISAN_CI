@@ -710,3 +710,44 @@ class AddressGeocodingTests(APITestCase):
         self.client.force_authenticate(user=None)
         response = self.client.get(reverse('address-search'), {'q': 'Cocody'})
         self.assertIn(response.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
+
+
+class ApproximateLocationTests(APITestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email='geo9-client@example.com',
+            username='geo9-client',
+            password='StrongPass123!',
+            role='client',
+        )
+        self.client.force_authenticate(self.user)
+
+    @override_settings(GEOJS_ALLOW_SELF_LOOKUP=True)
+    @patch('portfolio.views.approximate_location')
+    def test_client_can_request_opt_in_approximate_location(self, location_mock):
+        location_mock.return_value = {
+            'latitude': 5.359952,
+            'longitude': -4.008256,
+            'city': 'Abidjan',
+            'region': 'Abidjan',
+            'country': "Côte d'Ivoire",
+            'country_code': 'CI',
+            'timezone': 'Africa/Abidjan',
+            'accuracy_km': 25,
+            'recommended_radius_km': 25,
+            'label': "Abidjan, Côte d'Ivoire",
+            'source': 'ip',
+            'approximate': True,
+        }
+
+        response = self.client.get(reverse('approximate-location'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['approximate'])
+        self.assertEqual(response.data['source'], 'ip')
+        self.assertEqual(response.data['recommended_radius_km'], 25)
+        self.assertNotIn('ip', response.data)
+
+    def test_approximate_location_is_reserved_for_authenticated_clients(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(reverse('approximate-location'))
+        self.assertIn(response.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})

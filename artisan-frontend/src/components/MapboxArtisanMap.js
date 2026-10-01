@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import Supercluster from 'supercluster';
 import AppIcon from './AppIcon';
+import axios from '../utils/axiosInstance';
 import LocationActions from './LocationActions';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './MapboxArtisanMap.css';
@@ -14,6 +15,12 @@ const STREETS_STYLE = 'mapbox://styles/mapbox/streets-v12';
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/standard-satellite';
 const CLUSTER_RADIUS = 68;
 const CLUSTER_MAX_ZOOM = 16;
+const ROUTE_SOURCE_ID = 'artisan-ci-route';
+const ROUTE_CASING_LAYER_ID = 'artisan-ci-route-casing';
+const ROUTE_LAYER_ID = 'artisan-ci-route-line';
+const ISOCHRONE_SOURCE_ID = 'artisan-ci-isochrone';
+const ISOCHRONE_FILL_LAYER_ID = 'artisan-ci-isochrone-fill';
+const ISOCHRONE_OUTLINE_LAYER_ID = 'artisan-ci-isochrone-outline';
 
 const OSM_FALLBACK_STYLE = {
   version: 8,
@@ -77,7 +84,7 @@ function travelLabel(artisan) {
   return null;
 }
 
-function PopupCard({ artisan, onNavigate }) {
+function PopupCard({ artisan, onNavigate, onShowRoute, canShowRoute, approximateOrigin = false }) {
   return (
     <article className="artisan-mapbox-card">
       <div className="artisan-mapbox-card__cover">
@@ -103,8 +110,8 @@ function PopupCard({ artisan, onNavigate }) {
 
         <div className="artisan-mapbox-card__quick-badges">
           {artisan.supports_home_service ? <span>Chez le client</span> : null}
-          {artisan.client_coverage_status === 'covered' ? <span className="is-covered">✓ Position couverte</span> : null}
-          {artisan.client_coverage_status === 'outside' ? <span className="is-outside">Hors zone</span> : null}
+          {!approximateOrigin && artisan.client_coverage_status === 'covered' ? <span className="is-covered">✓ Position couverte</span> : null}
+          {!approximateOrigin && artisan.client_coverage_status === 'outside' ? <span className="is-outside">Hors zone</span> : null}
           {artisan.available_today ? <span className="is-available">Disponible aujourd’hui</span> : null}
         </div>
 
@@ -125,7 +132,7 @@ function PopupCard({ artisan, onNavigate }) {
             <div className="artisan-mapbox-card__travel-metrics">
               <span><strong>📍</strong>{Number(artisan.distance_km).toFixed(1)} km</span>
             </div>
-            <p className="artisan-mapbox-card__travel-note">Distance approximative à vol d’oiseau</p>
+            <p className="artisan-mapbox-card__travel-note">{approximateOrigin ? 'Distance depuis votre zone approximative' : 'Distance approximative à vol d’oiseau'}</p>
           </>
         ) : null}
 
@@ -134,9 +141,18 @@ function PopupCard({ artisan, onNavigate }) {
           <p className="artisan-mapbox-card__meta"><AppIcon name="tools" className="h-3.5 w-3.5" /><span>{artisan.service_titles.slice(0, 2).join(' · ')}</span></p>
         ) : null}
 
-        <div className="artisan-mapbox-card__actions">
+        <div className="artisan-mapbox-card__actions artisan-mapbox-card__actions--three">
           <button type="button" className="artisan-mapbox-card__primary" onClick={() => onNavigate(`/artisans/${artisan.artisan_nom}`)}>Profil</button>
           <button type="button" onClick={() => onNavigate(`/client/messagerie/${artisan.artisan_nom}`)}>Message</button>
+          <button
+            type="button"
+            className="artisan-mapbox-card__route"
+            disabled={!canShowRoute || approximateOrigin}
+            title={approximateOrigin ? 'Le tracé précis nécessite votre position GPS' : (canShowRoute ? 'Afficher l’itinéraire dans ARTISAN_CI' : 'Activez “Autour de moi” pour tracer l’itinéraire')}
+            onClick={() => onShowRoute(artisan)}
+          >
+            Itinéraire
+          </button>
         </div>
 
         <details className="artisan-mapbox-card__gps">
@@ -209,7 +225,135 @@ function logMapNotice(message) {
   }
 }
 
-export default function MapboxArtisanMap({ artisans = [], position = null }) {
+function removeRouteLayers(map) {
+  if (!map) return;
+  try { if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getLayer(ROUTE_CASING_LAYER_ID)) map.removeLayer(ROUTE_CASING_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID); } catch (_) { /* ignore */ }
+}
+
+function removeIsochroneLayers(map) {
+  if (!map) return;
+  try { if (map.getLayer(ISOCHRONE_OUTLINE_LAYER_ID)) map.removeLayer(ISOCHRONE_OUTLINE_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getLayer(ISOCHRONE_FILL_LAYER_ID)) map.removeLayer(ISOCHRONE_FILL_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getSource(ISOCHRONE_SOURCE_ID)) map.removeSource(ISOCHRONE_SOURCE_ID); } catch (_) { /* ignore */ }
+}
+
+function collectGeometryCoordinates(geometry) {
+  const output = [];
+  const visit = (value) => {
+    if (!Array.isArray(value)) return;
+    if (value.length >= 2 && typeof value[0] === 'number' && typeof value[1] === 'number') {
+      output.push(value);
+      return;
+    }
+    value.forEach(visit);
+  };
+  visit(geometry?.coordinates);
+  return output;
+}
+
+function drawIsochroneLayers(map, isochrone, { fit = false } = {}) {
+  if (!map || !isochrone?.geometry || !map.isStyleLoaded?.()) return;
+
+  const feature = {
+    type: 'Feature',
+    properties: { travel_time_minutes: isochrone.travel_time_minutes },
+    geometry: isochrone.geometry,
+  };
+
+  try {
+    const existing = map.getSource(ISOCHRONE_SOURCE_ID);
+    if (existing?.setData) existing.setData(feature);
+    else {
+      map.addSource(ISOCHRONE_SOURCE_ID, { type: 'geojson', data: feature });
+      const beforeRoute = map.getLayer(ROUTE_CASING_LAYER_ID) ? ROUTE_CASING_LAYER_ID : undefined;
+      map.addLayer({
+        id: ISOCHRONE_FILL_LAYER_ID,
+        type: 'fill',
+        source: ISOCHRONE_SOURCE_ID,
+        paint: {
+          'fill-color': '#0B6B50',
+          'fill-opacity': 0.14,
+        },
+      }, beforeRoute);
+      map.addLayer({
+        id: ISOCHRONE_OUTLINE_LAYER_ID,
+        type: 'line',
+        source: ISOCHRONE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#0B6B50',
+          'line-width': 2.5,
+          'line-opacity': 0.86,
+        },
+      }, beforeRoute);
+    }
+
+    if (fit) {
+      const coordinates = collectGeometryCoordinates(isochrone.geometry);
+      if (coordinates.length) {
+        const bounds = new mapboxgl.LngLatBounds();
+        coordinates.forEach((coordinate) => bounds.extend(coordinate));
+        map.fitBounds(bounds, { padding: { top: 95, right: 70, bottom: 100, left: 70 }, maxZoom: 14.5, duration: 850 });
+      }
+    }
+  } catch (error) {
+    logMapNotice(`Impossible de dessiner l’isochrone : ${error?.message || error}`);
+  }
+}
+
+function routeCoordinates(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'LineString') return geometry.coordinates || [];
+  if (geometry.type === 'MultiLineString') return (geometry.coordinates || []).flat();
+  return [];
+}
+
+function drawRouteLayers(map, route, { fit = false } = {}) {
+  if (!map || !route?.geometry || !map.isStyleLoaded?.()) return;
+
+  const feature = {
+    type: 'Feature',
+    properties: {},
+    geometry: route.geometry,
+  };
+
+  try {
+    const existing = map.getSource(ROUTE_SOURCE_ID);
+    if (existing?.setData) existing.setData(feature);
+    else {
+      map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: feature });
+      map.addLayer({
+        id: ROUTE_CASING_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#FFFFFF', 'line-width': 9, 'line-opacity': 0.94 },
+      });
+      map.addLayer({
+        id: ROUTE_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#0B6B50', 'line-width': 5, 'line-opacity': 0.96 },
+      });
+    }
+
+    if (fit) {
+      const coordinates = routeCoordinates(route.geometry);
+      if (coordinates.length) {
+        const bounds = new mapboxgl.LngLatBounds();
+        coordinates.forEach((coordinate) => bounds.extend(coordinate));
+        map.fitBounds(bounds, { padding: { top: 100, right: 90, bottom: 110, left: 90 }, maxZoom: 15.5, duration: 850 });
+      }
+    }
+  } catch (error) {
+    logMapNotice(`Impossible de dessiner l’itinéraire : ${error?.message || error}`);
+  }
+}
+
+export default function MapboxArtisanMap({ artisans = [], position = null, isochrone = null, positionApproximate = false }) {
   const token = (process.env.REACT_APP_MAPBOX_TOKEN || '').trim();
   const rawCustomStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
   const customStyle = normalizeCustomStyle(rawCustomStyle);
@@ -224,9 +368,14 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const basemapFailureCountRef = useRef(0);
   const renderClustersRef = useRef(() => {});
   const modeRef = useRef('standard');
+  const routeDataRef = useRef(null);
+  const isochroneRef = useRef(isochrone);
   const [mode, setMode] = useState(customStyle ? 'custom' : 'standard');
-  const [mapError, setMapError] = useState('');
+  const [, setMapError] = useState('');
   const [visibleCount, setVisibleCount] = useState(0);
+  const [routeData, setRouteData] = useState(null);
+  const [routeLoadingId, setRouteLoadingId] = useState(null);
+  const [routeError, setRouteError] = useState('');
 
   const points = useMemo(
     () => artisans.filter((artisan) => artisan.latitude != null && artisan.longitude != null),
@@ -251,6 +400,46 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     })));
     return index;
   }, [points]);
+
+  const clearRoute = useCallback(() => {
+    const map = mapRef.current;
+    routeDataRef.current = null;
+    setRouteData(null);
+    setRouteError('');
+    if (map?.isStyleLoaded?.()) removeRouteLayers(map);
+  }, []);
+
+  const showRoute = useCallback(async (artisan) => {
+    if (positionApproximate) {
+      setRouteError('Utilisez votre GPS pour afficher un itinéraire précis.');
+      return;
+    }
+    if (!position || position.length < 2) {
+      setRouteError('Activez « Autour de moi » pour afficher l’itinéraire depuis votre position.');
+      return;
+    }
+    if (!artisan?.id) return;
+
+    setRouteLoadingId(artisan.id);
+    setRouteError('');
+    try {
+      const response = await axios.post('/portfolio/route-to-artisan/', {
+        artisan_id: artisan.id,
+        lat: Number(position[0]),
+        lng: Number(position[1]),
+      });
+      const nextRoute = { ...response.data, artisan };
+      routeDataRef.current = nextRoute;
+      setRouteData(nextRoute);
+      const map = mapRef.current;
+      if (map?.isStyleLoaded?.()) drawRouteLayers(map, nextRoute, { fit: true });
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      setRouteError(detail || 'Impossible de calculer cet itinéraire pour le moment.');
+    } finally {
+      setRouteLoadingId(null);
+    }
+  }, [position, positionApproximate]);
 
   const clearRenderedMarkers = useCallback(() => {
     renderedMarkersRef.current.forEach((marker) => marker.remove());
@@ -318,7 +507,15 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
 
         const popupNode = document.createElement('div');
         const popupRoot = createRoot(popupNode);
-        popupRoot.render(<PopupCard artisan={artisan} onNavigate={navigate} />);
+        popupRoot.render(
+          <PopupCard
+            artisan={artisan}
+            onNavigate={navigate}
+            onShowRoute={showRoute}
+            canShowRoute={Boolean(position) && !positionApproximate}
+            approximateOrigin={positionApproximate}
+          />
+        );
         popupRootsRef.current.push(popupRoot);
 
         const popup = new mapboxgl.Popup({ offset: 32, maxWidth: '290px', className: 'artisan-mapbox-popup' }).setDOMContent(popupNode);
@@ -337,7 +534,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     });
 
     setVisibleCount(individualCount);
-  }, [artisanById, clearRenderedMarkers, clusterIndex, navigate]);
+  }, [artisanById, clearRenderedMarkers, clusterIndex, navigate, position, positionApproximate, showRoute]);
 
   useEffect(() => {
     renderClustersRef.current = renderClusters;
@@ -353,6 +550,10 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     window.clearTimeout(fallbackTimerRef.current);
     try {
       map.setStyle(OSM_FALLBACK_STYLE);
+      map.once('style.load', () => {
+        if (isochroneRef.current) drawIsochroneLayers(map, isochroneRef.current);
+        if (routeDataRef.current) drawRouteLayers(map, routeDataRef.current);
+      });
       setMode('fallback');
       logMapNotice('Fond OpenStreetMap activé automatiquement : Mapbox n’a pas chargé son fond de carte correctement.');
       setMapError(reason || '');
@@ -409,6 +610,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       setMapError('');
       if (!customStyle) applyStandardConfig(map, 'standard');
       handleRender();
+      if (isochroneRef.current) drawIsochroneLayers(map, isochroneRef.current, { fit: true });
       scheduleBasemapHealthCheck(map, initialMode);
     });
 
@@ -440,6 +642,8 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       clearRenderedMarkers();
       clientMarkerRef.current?.remove();
       clientMarkerRef.current = null;
+      routeDataRef.current = null;
+      isochroneRef.current = null;
       mapRef.current = null;
       map.remove();
     };
@@ -456,6 +660,8 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.once('style.load', () => {
       applyStandardConfig(map, mode);
       renderClustersRef.current?.();
+      if (isochroneRef.current) drawIsochroneLayers(map, isochroneRef.current);
+      if (routeDataRef.current) drawRouteLayers(map, routeDataRef.current);
       scheduleBasemapHealthCheck(map, mode);
     });
   }, [customStyle, mode, renderClusters, scheduleBasemapHealthCheck]);
@@ -477,10 +683,12 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       if (position) {
         const dot = document.createElement('div');
         dot.className = 'artisan-mapbox-client-marker';
-        dot.setAttribute('aria-label', 'Votre position approximative');
+        const clientLabel = positionApproximate ? 'Votre zone approximative' : 'Votre position';
+        dot.setAttribute('aria-label', clientLabel);
+        if (positionApproximate) dot.classList.add('artisan-mapbox-client-marker--approximate');
         clientMarkerRef.current = new mapboxgl.Marker({ element: dot, anchor: 'center' })
           .setLngLat([Number(position[1]), Number(position[0])])
-          .setPopup(new mapboxgl.Popup({ offset: 18 }).setText('Votre position approximative'))
+          .setPopup(new mapboxgl.Popup({ offset: 18 }).setText(clientLabel))
           .addTo(map);
       }
     };
@@ -493,11 +701,24 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       clientMarkerRef.current?.remove();
       clientMarkerRef.current = null;
     };
-  }, [position]);
+  }, [position, positionApproximate]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapDomReady(map)) return;
+    isochroneRef.current = isochrone;
+    if (!map || !map.isStyleLoaded?.()) return;
+
+    if (!isochrone?.geometry) {
+      removeIsochroneLayers(map);
+      return;
+    }
+
+    drawIsochroneLayers(map, isochrone, { fit: true });
+  }, [isochrone]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapDomReady(map) || isochrone?.geometry) return;
 
     const bounds = new mapboxgl.LngLatBounds();
     points.forEach((artisan) => bounds.extend([Number(artisan.longitude), Number(artisan.latitude)]));
@@ -516,7 +737,13 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     }
 
     map.fitBounds(bounds, { padding: 72, maxZoom: 14.5, duration: 800 });
-  }, [points, position]);
+  }, [points, position, isochrone]);
+
+  useEffect(() => {
+    if (!routeData) return;
+    const artisanStillVisible = artisanById.has(String(routeData.artisan_id || routeData.artisan?.id));
+    if (!position || !artisanStillVisible) clearRoute();
+  }, [artisanById, clearRoute, position, routeData]);
 
   if (!token) {
     return (
@@ -542,13 +769,41 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
         </div>
       ) : null}
 
+      {routeLoadingId ? (
+        <div className="absolute right-3 top-3 z-20 rounded-2xl border border-white/70 bg-white/95 px-4 py-3 text-xs font-black text-[#334139] shadow-lg backdrop-blur-xl">
+          Calcul de l’itinéraire…
+        </div>
+      ) : routeData ? (
+        <aside className="artisan-route-summary">
+          <button type="button" onClick={clearRoute} aria-label="Fermer l’itinéraire">×</button>
+          <p>Itinéraire vers</p>
+          <strong>{routeData.artisan_nom || routeData.artisan?.artisan_nom}</strong>
+          <div>
+            {routeData.distance_km != null ? <span>🚗 {Number(routeData.distance_km).toFixed(1)} km</span> : null}
+            {routeData.duration_minutes != null ? <span>⏱ {routeData.duration_minutes} min</span> : null}
+          </div>
+        </aside>
+      ) : null}
+
+      {routeError ? (
+        <div className="artisan-route-error">
+          <span>{routeError}</span>
+          <button type="button" onClick={() => setRouteError('')}>×</button>
+        </div>
+      ) : null}
+
+      {isochrone?.geometry ? (
+        <div className="pointer-events-none absolute bottom-16 left-3 z-10 flex items-center gap-2 rounded-2xl border border-white/70 bg-white/95 px-3 py-2 text-[11px] font-black text-[#334139] shadow-lg backdrop-blur-xl">
+          <span className="h-3 w-3 rounded-full border-2 border-[#0B6B50] bg-[#0B6B50]/15" />
+          Zone accessible en {Number(isochrone.travel_time_minutes) === 60 ? '1 h' : `${isochrone.travel_time_minutes} min`}
+        </div>
+      ) : null}
+
       <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-white/60 bg-[#10271F]/90 px-4 py-2 text-[11px] font-bold text-white shadow-xl backdrop-blur-md">
         {points.length} artisan{points.length > 1 ? 's' : ''} · {visibleCount} visible{visibleCount > 1 ? 's' : ''}
       </div>
 
-      {mapError ? (
-        <div className="absolute inset-x-4 bottom-16 z-20 rounded-2xl border border-red-100 bg-white/95 px-4 py-3 text-sm font-semibold text-red-700 shadow-lg">{mapError}</div>
-      ) : null}
+
     </div>
   );
 }

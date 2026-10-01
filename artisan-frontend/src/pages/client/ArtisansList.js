@@ -43,13 +43,17 @@ function availabilityLabel(artisan) {
   return `Prochain créneau ${day} à ${time}`;
 }
 
-function travelLabel(artisan) {
-  if (artisan?.route_distance_km != null) {
+function travelLabel(artisan, approximateOrigin = false) {
+  if (!approximateOrigin && artisan?.route_distance_km != null) {
     const distance = `${Number(artisan.route_distance_km).toFixed(1)} km`;
     const duration = artisan.route_duration_minutes != null ? ` · ${artisan.route_duration_minutes} min` : '';
     return `${distance}${duration}`;
   }
-  if (artisan?.distance_km != null) return `${Number(artisan.distance_km).toFixed(1)} km à vol d’oiseau`;
+  if (artisan?.distance_km != null) {
+    return approximateOrigin
+      ? `≈ ${Number(artisan.distance_km).toFixed(1)} km depuis votre zone`
+      : `${Number(artisan.distance_km).toFixed(1)} km à vol d’oiseau`;
+  }
   return null;
 }
 
@@ -61,6 +65,10 @@ export default function ArtisansList() {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [position, setPosition] = useState(null);
+  const [positionSource, setPositionSource] = useState(null);
+  const [approximateLocation, setApproximateLocation] = useState(null);
+  const [gpsUnavailable, setGpsUnavailable] = useState(false);
+  const [approximateLocating, setApproximateLocating] = useState(false);
   const [radius, setRadius] = useState('10');
   const [proximityMode, setProximityMode] = useState('distance');
   const [travelTime, setTravelTime] = useState('30');
@@ -86,6 +94,7 @@ export default function ArtisansList() {
 
   const loadArtisans = useCallback(async ({
     currentPosition = position,
+    currentPositionSource = positionSource,
     currentRadius = radius,
     currentProximityMode = proximityMode,
     currentTravelTime = travelTime,
@@ -113,15 +122,15 @@ export default function ArtisansList() {
       if (currentMinRating) params.min_rating = currentMinRating;
       if (currentVerifiedOnly) params.verified = 'true';
       if (currentHomeServiceOnly) params.home_service = 'true';
-      if (currentCoveredOnly) params.covered = 'true';
+      if (currentCoveredOnly && currentPositionSource === 'gps') params.covered = 'true';
       if (currentAvailability) params.availability = currentAvailability;
       if (currentPosition) {
         params.lat = currentPosition[0];
         params.lng = currentPosition[1];
-        params.route_metrics = 'true';
+        if (currentPositionSource === 'gps') params.route_metrics = 'true';
       }
       if (currentScope === 'nearby') {
-        if (currentProximityMode === 'time') params.travel_time_minutes = Number(currentTravelTime);
+        if (currentProximityMode === 'time' && currentPositionSource === 'gps') params.travel_time_minutes = Number(currentTravelTime);
         else params.radius = Number(currentRadius);
       }
 
@@ -154,11 +163,12 @@ export default function ArtisansList() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [position, radius, proximityMode, travelTime, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, coveredOnly, availability]);
+  }, [position, positionSource, radius, proximityMode, travelTime, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, coveredOnly, availability]);
 
   const activateNearbySearch = useCallback(() => {
     if (!navigator.geolocation) {
-      setMessage('La géolocalisation n’est pas disponible sur cet appareil. Vous pouvez utiliser la recherche élargie.');
+      setGpsUnavailable(true);
+      setMessage('La géolocalisation n’est pas disponible sur cet appareil. Vous pouvez utiliser la recherche élargie ou une zone approximative.');
       return;
     }
 
@@ -168,16 +178,45 @@ export default function ArtisansList() {
       ({ coords }) => {
         const current = [coords.latitude, coords.longitude];
         setPosition(current);
+        setPositionSource('gps');
+        setApproximateLocation(null);
+        setGpsUnavailable(false);
         setScope('nearby');
         setLocating(false);
       },
       () => {
         setLocating(false);
+        setGpsUnavailable(true);
         setScope('all');
-        setMessage('Votre position n’a pas pu être obtenue. La recherche élargie reste disponible.');
+        setMessage('Votre GPS n’a pas pu être utilisé. Vous pouvez rechercher partout ou utiliser une zone approximative.');
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
+  }, []);
+
+  const activateApproximateSearch = useCallback(async () => {
+    setApproximateLocating(true);
+    setMessage('');
+    try {
+      const response = await axios.get('/portfolio/location/approximate/');
+      const data = response.data || {};
+      if (data.latitude == null || data.longitude == null) throw new Error('Position approximative invalide.');
+      const recommendedRadius = String(Math.max(25, Math.min(100, Number(data.recommended_radius_km || 25))));
+      setPosition([Number(data.latitude), Number(data.longitude)]);
+      setPositionSource('ip');
+      setApproximateLocation(data);
+      setRadius(recommendedRadius);
+      setProximityMode('distance');
+      setCoveredOnly(false);
+      setIsochrone(null);
+      setScope('nearby');
+      setGpsUnavailable(true);
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      setMessage(detail || 'La localisation approximative n’est pas disponible. Utilisez la recherche élargie ou saisissez une ville.');
+    } finally {
+      setApproximateLocating(false);
+    }
   }, []);
 
   // Si le client a déjà accordé la permission de géolocalisation, la page
@@ -196,11 +235,11 @@ export default function ArtisansList() {
       loadArtisans();
     }, search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
-  }, [loadArtisans, search, selectedCategory, radius, proximityMode, travelTime, scope, position, minRating, verifiedOnly, homeServiceOnly, availability]);
+  }, [loadArtisans, search, selectedCategory, radius, proximityMode, travelTime, scope, position, positionSource, minRating, verifiedOnly, homeServiceOnly, coveredOnly, availability]);
 
   useEffect(() => {
     let active = true;
-    if (scope !== 'nearby' || proximityMode !== 'time' || !position || !routing.configured) {
+    if (scope !== 'nearby' || proximityMode !== 'time' || positionSource !== 'gps' || !position || !routing.configured) {
       setIsochrone(null);
       setIsochroneLoading(false);
       return () => { active = false; };
@@ -223,7 +262,7 @@ export default function ArtisansList() {
       });
 
     return () => { active = false; };
-  }, [position, proximityMode, routing.configured, scope, travelTime]);
+  }, [position, positionSource, proximityMode, routing.configured, scope, travelTime]);
 
   useAutoRefresh(() => loadArtisans({ silent: true }), { intervalMs: 30000 });
 
@@ -239,6 +278,7 @@ export default function ArtisansList() {
   const setSearchEverywhere = () => {
     setScope('all');
     setIsochrone(null);
+    setCoveredOnly(false);
     setMessage('Recherche élargie activée : vous pouvez saisir une ville, une commune, un métier ou une spécialité.');
   };
 
@@ -305,8 +345,8 @@ export default function ArtisansList() {
                 <button
                   type="button"
                   onClick={() => setProximityMode('time')}
-                  disabled={!routing.configured}
-                  title={routing.configured ? 'Rechercher par temps de trajet réel' : 'Configurez openrouteservice pour utiliser ce mode'}
+                  disabled={!routing.configured || positionSource !== 'gps'}
+                  title={positionSource !== 'gps' ? 'Le temps de trajet nécessite votre position GPS précise' : (routing.configured ? 'Rechercher par temps de trajet réel' : 'Configurez openrouteservice pour utiliser ce mode')}
                   className={`rounded-xl px-3 py-2 text-xs font-black ${proximityMode === 'time' ? 'bg-[#0B6B50] text-white shadow-sm' : 'text-[#718078]'} disabled:cursor-not-allowed disabled:opacity-40`}
                 >
                   Temps de trajet
@@ -347,15 +387,24 @@ export default function ArtisansList() {
               <AppIcon name="search" className="h-4 w-4" /> Élargir la recherche
             </button>
           ) : (
-            <button onClick={activateNearbySearch} disabled={locating} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111815] px-5 py-3 text-sm font-black text-white disabled:opacity-60">
-              <AppIcon name="pin" className="h-4 w-4" /> {locating ? 'Localisation…' : 'Autour de moi'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={activateNearbySearch} disabled={locating} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111815] px-5 py-3 text-sm font-black text-white disabled:opacity-60">
+                <AppIcon name="pin" className="h-4 w-4" /> {locating ? 'Localisation…' : 'Autour de moi'}
+              </button>
+              <button onClick={activateApproximateSearch} disabled={approximateLocating} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-sm font-black text-[#526159] disabled:opacity-60">
+                <AppIcon name="pin" className="h-4 w-4" /> {approximateLocating ? 'Recherche…' : (gpsUnavailable ? 'Utiliser ma zone approximative' : 'Sans GPS ?')}
+              </button>
+            </div>
           )}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-3 py-1.5 text-xs font-black ${scope === 'nearby' ? 'bg-[#EAF4F0] text-[#0B6B50]' : 'bg-[#FFF1E4] text-[#9A521C]'}`}>
-            {scope === 'nearby' ? (proximityMode === 'time' ? `Accessible en ≤ ${travelTime === '60' ? '1 h' : `${travelTime} min`}` : `Autour de vous · ${radius} km`) : 'Recherche élargie'}
+            {scope === 'nearby'
+              ? (positionSource === 'ip'
+                ? `Zone approximative · ${radius} km`
+                : (proximityMode === 'time' ? `Accessible en ≤ ${travelTime === '60' ? '1 h' : `${travelTime} min`}` : `Autour de vous · ${radius} km`))
+              : 'Recherche élargie'}
           </span>
           {categories.slice(0, 6).map((category) => (
             <button
@@ -369,7 +418,7 @@ export default function ArtisansList() {
           ))}
         </div>
 
-        {(availableFilters.verified > 0 || availableFilters.home_service > 0 || availableFilters.covered > 0 || availableFilters.availability_today > 0 || availableFilters.availability_7d > 0 || availableFilters.rating_options?.length > 0) && (
+        {(availableFilters.verified > 0 || availableFilters.home_service > 0 || (positionSource === 'gps' && availableFilters.covered > 0) || availableFilters.availability_today > 0 || availableFilters.availability_7d > 0 || availableFilters.rating_options?.length > 0) && (
           <div className="mt-4 border-t border-black/5 pt-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#718078]">Filtres disponibles dans cette recherche</p>
@@ -398,7 +447,7 @@ export default function ArtisansList() {
                   Chez le client · {availableFilters.home_service}
                 </button>
               )}
-              {scope === 'nearby' && availableFilters.covered > 0 && (
+              {scope === 'nearby' && positionSource === 'gps' && availableFilters.covered > 0 && (
                 <button
                   type="button"
                   onClick={() => setCoveredOnly((value) => !value)}
@@ -438,7 +487,16 @@ export default function ArtisansList() {
       </section>
 
       {message && <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">{message}</div>}
-      {position && routing.requested && !routing.configured && (
+      {positionSource === 'ip' && approximateLocation && (
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#F2D1B8] bg-[#FFF8F1] px-4 py-3 text-sm text-[#7A4B28] sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-black">Position approximative : {approximateLocation.label}</p>
+            <p className="mt-1 text-xs leading-5">Cette estimation vient de votre connexion Internet{approximateLocation.accuracy_km ? ` (précision indicative ≈ ${approximateLocation.accuracy_km} km)` : ''}. Les trajets précis et la vérification des zones nécessitent le GPS.</p>
+          </div>
+          <button type="button" onClick={activateNearbySearch} disabled={locating} className="shrink-0 rounded-xl bg-[#0B6B50] px-3 py-2 text-xs font-black text-white disabled:opacity-60">Utiliser mon GPS</button>
+        </div>
+      )}
+      {position && positionSource === 'gps' && routing.requested && !routing.configured && (
         <div className="mt-4 rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-xs font-semibold text-[#66736D]">
           Les temps de trajet routiers ne sont pas configurés sur le backend. Les distances affichées restent provisoirement à vol d’oiseau.
         </div>
@@ -453,13 +511,18 @@ export default function ArtisansList() {
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-[#718078]">{resultLabel}</p>
         {scope === 'nearby' && (
-          <p className="text-xs text-[#829087]">Seuls les artisans avec une position GPS renseignée peuvent apparaître dans la recherche de proximité.</p>
+          <p className="text-xs text-[#829087]">{positionSource === 'ip' ? 'La zone est approximative : utilisez votre GPS pour des distances, trajets et zones d’intervention précis.' : 'Seuls les artisans avec une position GPS renseignée peuvent apparaître dans la recherche de proximité.'}</p>
         )}
       </div>
 
       {view === 'map' && (
         <div className="mt-4 overflow-hidden rounded-[28px] border border-black/5 bg-white p-2 shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
-          <MapboxArtisanMap artisans={mapPoints} position={position} isochrone={scope === 'nearby' && proximityMode === 'time' ? isochrone : null} />
+          <MapboxArtisanMap
+            artisans={mapPoints}
+            position={position}
+            positionApproximate={positionSource === 'ip'}
+            isochrone={scope === 'nearby' && positionSource === 'gps' && proximityMode === 'time' ? isochrone : null}
+          />
           {!loading && mapPoints.length === 0 && (
             <div className="border-t border-black/5 px-4 py-4 text-center text-sm text-[#718078]">
               Aucun artisan géolocalisé ne correspond à cette recherche. Essayez d’augmenter la distance ou le temps de trajet, ou d’élargir la recherche.
@@ -495,8 +558,8 @@ export default function ArtisansList() {
                         </div>
                         <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[#718078]"><AppIcon name="pin" className="h-3.5 w-3.5" />{artisan.localisation || 'Localisation non renseignée'}</p>
                       </div>
-                      {travelLabel(artisan) && (
-                        <span className="rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]">{travelLabel(artisan)}</span>
+                      {travelLabel(artisan, positionSource === 'ip') && (
+                        <span className="rounded-full bg-[#EAF4F0] px-2.5 py-1 text-xs font-black text-[#0B6B50]">{travelLabel(artisan, positionSource === 'ip')}</span>
                       )}
                     </div>
 
@@ -504,8 +567,8 @@ export default function ArtisansList() {
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <RatingBadge artisan={artisan} />
                       {artisan.supports_home_service && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">Chez le client</span>}
-                      {artisan.client_coverage_status === 'covered' && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">✓ Votre position est couverte</span>}
-                      {artisan.client_coverage_status === 'outside' && <span className="rounded-full bg-[#FFF1E6] px-2 py-1 text-[10px] font-black text-[#A4561D]">Hors zone habituelle</span>}
+                      {positionSource === 'gps' && artisan.client_coverage_status === 'covered' && <span className="rounded-full bg-[#EAF4F0] px-2 py-1 text-[10px] font-black text-[#0B6B50]">✓ Votre position est couverte</span>}
+                      {positionSource === 'gps' && artisan.client_coverage_status === 'outside' && <span className="rounded-full bg-[#FFF1E6] px-2 py-1 text-[10px] font-black text-[#A4561D]">Hors zone habituelle</span>}
                     </div>
                     {availabilityLabel(artisan) && (
                       <p className={`mt-2 text-xs font-black ${artisan.available_today ? 'text-[#0B6B50]' : 'text-[#526159]'}`}>

@@ -2,6 +2,7 @@ import logging
 import unicodedata
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.db.models import Avg, Count, Prefetch, Q
 from django.utils import timezone
 from geopy.distance import geodesic
@@ -15,6 +16,7 @@ from appointments.domain import generate_available_slots
 from services.models import Service
 from reviews.models import Review
 from integrations.geocoding import reverse_address, search_addresses
+from integrations.ip_geolocation import approximate_location, request_client_ip
 from integrations.routing import driving_isochrone, driving_route_geometry, driving_route_metrics, routing_configured
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
@@ -105,6 +107,24 @@ class ReverseAddressView(APIView):
         result = reverse_address(latitude, longitude)
         if not result:
             return Response({'detail': "Adresse introuvable pour cette position."}, status=503)
+        return Response(result)
+
+
+class ApproximateLocationView(APIView):
+    """Fallback volontaire lorsque le client ne peut pas utiliser le GPS."""
+
+    permission_classes = [IsClient]
+
+    def get(self, request):
+        result = approximate_location(
+            request_client_ip(request),
+            allow_self_lookup=bool(getattr(settings, 'GEOJS_ALLOW_SELF_LOOKUP', False)),
+        )
+        if not result:
+            return Response(
+                {'detail': "La localisation approximative n'est pas disponible pour le moment."},
+                status=503,
+            )
         return Response(result)
 
 
