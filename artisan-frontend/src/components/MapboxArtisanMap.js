@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import Supercluster from 'supercluster';
 import AppIcon from './AppIcon';
 import LocationActions from './LocationActions';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -9,7 +10,23 @@ import './MapboxArtisanMap.css';
 
 const DEFAULT_CENTER = [-4.00826, 5.35995];
 const STANDARD_STYLE = 'mapbox://styles/mapbox/standard';
+const STREETS_STYLE = 'mapbox://styles/mapbox/streets-v12';
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/standard-satellite';
+const CLUSTER_RADIUS = 68;
+const CLUSTER_MAX_ZOOM = 16;
+
+const OSM_FALLBACK_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+    },
+  },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+};
 
 function categorySummary(artisan) {
   const labels = artisan?.service_category_labels || [];
@@ -25,14 +42,27 @@ function initials(artisan) {
 function MarkerBadge({ artisan }) {
   return (
     <div className="artisan-mapbox-marker" title={artisan.artisan_nom}>
-      {artisan.photo_profil ? (
-        <img src={artisan.photo_profil} alt="" />
-      ) : (
-        <span>{initials(artisan)}</span>
-      )}
+      <div className="artisan-mapbox-marker__avatar">
+        {artisan.photo_profil ? (
+          <img src={artisan.photo_profil} alt="" />
+        ) : (
+          <span>{initials(artisan)}</span>
+        )}
+      </div>
+      {artisan.artisan_verified ? <i className="artisan-mapbox-marker__verified">✓</i> : null}
       {artisan.review_count ? (
         <b>★ {Number(artisan.rating_average || 0).toFixed(1)}</b>
       ) : null}
+    </div>
+  );
+}
+
+function ClusterBadge({ count }) {
+  const size = count < 10 ? 'small' : count < 50 ? 'medium' : 'large';
+  return (
+    <div className={`artisan-mapbox-cluster artisan-mapbox-cluster--${size}`}>
+      <span>{count}</span>
+      <small>artisans</small>
     </div>
   );
 }
@@ -89,63 +119,224 @@ function PopupCard({ artisan, onNavigate }) {
 }
 
 function applyStandardConfig(map, mode) {
-  const isSatellite = mode === 'satellite';
+  if (!['standard', 'satellite'].includes(mode)) return;
   const entries = [
     ['lightPreset', 'day'],
     ['showPointOfInterestLabels', true],
     ['showTransitLabels', false],
     ['showPlaceLabels', true],
     ['showRoadLabels', true],
-    ['show3dObjects', true],
   ];
-  if (!isSatellite) entries.push(['theme', 'faded']);
+  if (mode === 'standard') {
+    entries.push(['show3dObjects', true]);
+    entries.push(['theme', 'faded']);
+  }
 
   entries.forEach(([key, value]) => {
-    try { map.setConfigProperty('basemap', key, value); } catch (_) { /* propriété non disponible sur ce style/version */ }
+    try { map.setConfigProperty('basemap', key, value); } catch (_) { /* option non disponible */ }
   });
+}
+
+function styleForMode(mode, customStyle) {
+  if (customStyle) return customStyle;
+  if (mode === 'satellite') return SATELLITE_STYLE;
+  if (mode === 'streets') return STREETS_STYLE;
+  return STANDARD_STYLE;
+}
+
+function normalizeCustomStyle(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return '';
+
+  // Les valeurs ci-dessous sont des exemples de documentation et ne doivent
+  // jamais être traitées comme de vrais styles Mapbox. Cela évite une carte
+  // vide lorsqu'un utilisateur copie directement le .env.example.
+  const placeholderPattern = /ton-compte|ton-style|your-account|your-style|example/i;
+  if (placeholderPattern.test(candidate)) return '';
+
+  return candidate;
 }
 
 export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const token = (process.env.REACT_APP_MAPBOX_TOKEN || '').trim();
-  const customStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
+  const rawCustomStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
+  const customStyle = normalizeCustomStyle(rawCustomStyle);
   const navigate = useNavigate();
   const containerRef = useRef(null);
   const mapRef = useRef(null);
-  const markerRefs = useRef([]);
-  const popupRoots = useRef([]);
-  const markerRoots = useRef([]);
+  const renderedMarkersRef = useRef([]);
+  const markerRootsRef = useRef([]);
+  const popupRootsRef = useRef([]);
   const clientMarkerRef = useRef(null);
-  const [mode, setMode] = useState('standard');
+  const fallbackTimerRef = useRef(null);
+  const basemapFailureCountRef = useRef(0);
+  const [mode, setMode] = useState(customStyle ? 'custom' : 'standard');
   const [mapError, setMapError] = useState('');
+  const [mapNotice, setMapNotice] = useState('');
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  useEffect(() => {
+    if (rawCustomStyle && !customStyle) {
+      setMapNotice('Le style personnalisé renseigné est un exemple. Mapbox Standard est utilisé automatiquement.');
+    }
+  }, [customStyle, rawCustomStyle]);
 
   const points = useMemo(
     () => artisans.filter((artisan) => artisan.latitude != null && artisan.longitude != null),
     [artisans],
   );
 
+  const artisanById = useMemo(() => {
+    const map = new Map();
+    points.forEach((artisan) => map.set(String(artisan.id), artisan));
+    return map;
+  }, [points]);
+
+  const clusterIndex = useMemo(() => {
+    const index = new Supercluster({ radius: CLUSTER_RADIUS, maxZoom: CLUSTER_MAX_ZOOM, minPoints: 2 });
+    index.load(points.map((artisan) => ({
+      type: 'Feature',
+      properties: { artisanId: String(artisan.id) },
+      geometry: {
+        type: 'Point',
+        coordinates: [Number(artisan.longitude), Number(artisan.latitude)],
+      },
+    })));
+    return index;
+  }, [points]);
+
+  const clearRenderedMarkers = useCallback(() => {
+    renderedMarkersRef.current.forEach((marker) => marker.remove());
+    renderedMarkersRef.current = [];
+    markerRootsRef.current.forEach((root) => root.unmount());
+    markerRootsRef.current = [];
+    popupRootsRef.current.forEach((root) => root.unmount());
+    popupRootsRef.current = [];
+  }, []);
+
+  const renderClusters = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    clearRenderedMarkers();
+
+    const bounds = map.getBounds();
+    const zoom = Math.max(0, Math.min(CLUSTER_MAX_ZOOM + 1, Math.floor(map.getZoom())));
+    const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+    let features = [];
+    try {
+      features = clusterIndex.getClusters(bbox, zoom);
+    } catch (_) {
+      features = [];
+    }
+
+    let individualCount = 0;
+
+    features.forEach((feature) => {
+      const [lng, lat] = feature.geometry.coordinates;
+      const isCluster = Boolean(feature.properties?.cluster);
+      const markerNode = document.createElement('div');
+      const markerRoot = createRoot(markerNode);
+      markerRootsRef.current.push(markerRoot);
+
+      if (isCluster) {
+        const count = Number(feature.properties.point_count || 0);
+        const clusterId = feature.properties.cluster_id;
+        markerRoot.render(<ClusterBadge count={count} />);
+        markerNode.setAttribute('aria-label', `${count} artisans dans cette zone`);
+        markerNode.setAttribute('role', 'button');
+        markerNode.tabIndex = 0;
+
+        const expand = () => {
+          let expansionZoom = Math.min(map.getZoom() + 2, CLUSTER_MAX_ZOOM + 1);
+          try { expansionZoom = clusterIndex.getClusterExpansionZoom(clusterId); } catch (_) { /* garde le zoom par défaut */ }
+          map.easeTo({ center: [lng, lat], zoom: expansionZoom, duration: 650 });
+        };
+        markerNode.addEventListener('click', expand);
+        markerNode.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            expand();
+          }
+        });
+      } else {
+        const artisan = artisanById.get(String(feature.properties?.artisanId));
+        if (!artisan) return;
+        individualCount += 1;
+        markerRoot.render(<MarkerBadge artisan={artisan} />);
+
+        const popupNode = document.createElement('div');
+        const popupRoot = createRoot(popupNode);
+        popupRoot.render(<PopupCard artisan={artisan} onNavigate={navigate} />);
+        popupRootsRef.current.push(popupRoot);
+
+        const popup = new mapboxgl.Popup({ offset: 32, maxWidth: '290px', className: 'artisan-mapbox-popup' }).setDOMContent(popupNode);
+        const marker = new mapboxgl.Marker({ element: markerNode, anchor: 'bottom' })
+          .setLngLat([lng, lat])
+          .setPopup(popup)
+          .addTo(map);
+        renderedMarkersRef.current.push(marker);
+        return;
+      }
+
+      const marker = new mapboxgl.Marker({ element: markerNode, anchor: 'center' })
+        .setLngLat([lng, lat])
+        .addTo(map);
+      renderedMarkersRef.current.push(marker);
+    });
+
+    setVisibleCount(individualCount);
+  }, [artisanById, clearRenderedMarkers, clusterIndex, navigate]);
+
+  const activateFallbackBasemap = useCallback((reason = '') => {
+    const map = mapRef.current;
+    if (!map) return;
+    window.clearTimeout(fallbackTimerRef.current);
+    try {
+      map.setStyle(OSM_FALLBACK_STYLE);
+      setMode('fallback');
+      setMapNotice('Fond OpenStreetMap activé automatiquement : Mapbox n’a pas chargé son fond de carte correctement.');
+      setMapError(reason || '');
+    } catch (_) {
+      setMapError('Impossible de charger le fond de carte. Vérifiez votre connexion et votre jeton Mapbox.');
+    }
+  }, []);
+
+  const scheduleBasemapHealthCheck = useCallback((map, currentMode) => {
+    window.clearTimeout(fallbackTimerRef.current);
+    if (currentMode === 'fallback' || currentMode === 'custom') return;
+
+    fallbackTimerRef.current = window.setTimeout(() => {
+      if (!mapRef.current || mapRef.current !== map) return;
+      const loaded = map.isStyleLoaded();
+      const tilesLoaded = typeof map.areTilesLoaded === 'function' ? map.areTilesLoaded() : true;
+      if (!loaded || !tilesLoaded) {
+        if (currentMode === 'standard' && basemapFailureCountRef.current === 0) {
+          basemapFailureCountRef.current += 1;
+          setMapNotice('Mapbox Standard tarde à charger. Passage automatique au style Rues.');
+          setMode('streets');
+        } else {
+          activateFallbackBasemap();
+        }
+      }
+    }, 6500);
+  }, [activateFallbackBasemap]);
+
   useEffect(() => {
     if (!token || !containerRef.current || mapRef.current) return undefined;
 
     mapboxgl.accessToken = token;
+    const initialMode = customStyle ? 'custom' : 'standard';
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: customStyle || STANDARD_STYLE,
+      style: styleForMode(initialMode, customStyle),
       center: DEFAULT_CENTER,
       zoom: 10.5,
-      pitch: 38,
-      bearing: -8,
+      pitch: 35,
+      bearing: -5,
       antialias: true,
       cooperativeGestures: true,
       attributionControl: false,
-      config: customStyle ? undefined : {
-        basemap: {
-          theme: 'faded',
-          lightPreset: 'day',
-          showPointOfInterestLabels: true,
-          showTransitLabels: false,
-          show3dObjects: true,
-        },
-      },
     });
 
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
@@ -156,76 +347,58 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.on('load', () => {
       setMapError('');
       if (!customStyle) applyStandardConfig(map, 'standard');
+      renderClusters();
+      scheduleBasemapHealthCheck(map, initialMode);
     });
+
+    map.on('moveend', renderClusters);
+    map.on('zoomend', renderClusters);
+    map.on('resize', renderClusters);
+
     map.on('error', (event) => {
-      const message = event?.error?.message || '';
-      if (/token|401|403|style/i.test(message)) {
-        setMapError('Mapbox ne peut pas charger la carte. Vérifiez le jeton public et le style configurés.');
+      const message = String(event?.error?.message || '');
+      const serious = /401|403|unauthor|forbidden|token|style|failed to fetch|network/i.test(message);
+      if (!serious) return;
+      if (mode === 'fallback') return;
+      if (basemapFailureCountRef.current === 0 && !customStyle) {
+        basemapFailureCountRef.current += 1;
+        setMapNotice('Le style Mapbox principal n’a pas chargé correctement. Passage automatique au style Rues.');
+        setMode('streets');
+      } else {
+        activateFallbackBasemap('Mapbox n’a pas pu charger toutes les données du fond de carte.');
       }
     });
 
     mapRef.current = map;
+
     return () => {
-      markerRefs.current.forEach((marker) => marker.remove());
-      markerRefs.current = [];
-      markerRoots.current.forEach((root) => root.unmount());
-      markerRoots.current = [];
-      popupRoots.current.forEach((root) => root.unmount());
-      popupRoots.current = [];
+      window.clearTimeout(fallbackTimerRef.current);
+      clearRenderedMarkers();
       clientMarkerRef.current?.remove();
       clientMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
     };
-  }, [customStyle, token]);
+  }, [clearRenderedMarkers, customStyle, renderClusters, scheduleBasemapHealthCheck, token, activateFallbackBasemap]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || customStyle) return;
-    const styleUrl = mode === 'satellite' ? SATELLITE_STYLE : STANDARD_STYLE;
-    map.setStyle(styleUrl);
-    map.once('style.load', () => applyStandardConfig(map, mode));
-  }, [customStyle, mode]);
+    if (!map || mode === 'custom' || mode === 'fallback') return;
+    if (!map.loaded()) return;
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return undefined;
-
-    markerRefs.current.forEach((marker) => marker.remove());
-    markerRefs.current = [];
-    markerRoots.current.forEach((root) => root.unmount());
-    markerRoots.current = [];
-    popupRoots.current.forEach((root) => root.unmount());
-    popupRoots.current = [];
-
-    points.forEach((artisan) => {
-      const markerNode = document.createElement('div');
-      const markerRoot = createRoot(markerNode);
-      markerRoot.render(<MarkerBadge artisan={artisan} />);
-      markerRoots.current.push(markerRoot);
-
-      const popupNode = document.createElement('div');
-      const popupRoot = createRoot(popupNode);
-      popupRoot.render(<PopupCard artisan={artisan} onNavigate={navigate} />);
-      popupRoots.current.push(popupRoot);
-
-      const popup = new mapboxgl.Popup({ offset: 30, maxWidth: '290px', className: 'artisan-mapbox-popup' }).setDOMContent(popupNode);
-      const marker = new mapboxgl.Marker({ element: markerNode, anchor: 'bottom' })
-        .setLngLat([Number(artisan.longitude), Number(artisan.latitude)])
-        .setPopup(popup)
-        .addTo(map);
-      markerRefs.current.push(marker);
+    const nextStyle = styleForMode(mode, customStyle);
+    setMapError('');
+    map.setStyle(nextStyle);
+    map.once('style.load', () => {
+      applyStandardConfig(map, mode);
+      renderClusters();
+      scheduleBasemapHealthCheck(map, mode);
     });
+  }, [customStyle, mode, renderClusters, scheduleBasemapHealthCheck]);
 
-    return () => {
-      markerRefs.current.forEach((marker) => marker.remove());
-      markerRefs.current = [];
-      markerRoots.current.forEach((root) => root.unmount());
-      markerRoots.current = [];
-      popupRoots.current.forEach((root) => root.unmount());
-      popupRoots.current = [];
-    };
-  }, [navigate, points]);
+  useEffect(() => {
+    renderClusters();
+  }, [renderClusters]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -254,18 +427,18 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     if (position) bounds.extend([Number(position[1]), Number(position[0])]);
 
     if (bounds.isEmpty()) {
-      map.easeTo({ center: DEFAULT_CENTER, zoom: 10.5, pitch: 38, duration: 700 });
+      map.easeTo({ center: DEFAULT_CENTER, zoom: 10.5, pitch: 35, duration: 700 });
       return;
     }
 
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
     if (sw.lng === ne.lng && sw.lat === ne.lat) {
-      map.easeTo({ center: [sw.lng, sw.lat], zoom: 14, pitch: 42, duration: 700 });
+      map.easeTo({ center: [sw.lng, sw.lat], zoom: 14, pitch: 40, duration: 700 });
       return;
     }
 
-    map.fitBounds(bounds, { padding: 70, maxZoom: 14.5, duration: 800 });
+    map.fitBounds(bounds, { padding: 72, maxZoom: 14.5, duration: 800 });
   }, [points, position]);
 
   if (!token) {
@@ -284,19 +457,26 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     <div className="relative overflow-hidden rounded-[24px] bg-[#EAF0EC]">
       <div ref={containerRef} className="h-[560px] w-full sm:h-[610px]" />
 
-      {!customStyle ? (
+      {!customStyle && mode !== 'fallback' ? (
         <div className="absolute left-3 top-3 z-10 flex rounded-2xl border border-white/70 bg-white/95 p-1 shadow-lg backdrop-blur-xl">
-          <button type="button" onClick={() => setMode('standard')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'standard' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Standard</button>
+          <button type="button" onClick={() => setMode('standard')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'standard' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Premium 3D</button>
+          <button type="button" onClick={() => setMode('streets')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'streets' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Rues</button>
           <button type="button" onClick={() => setMode('satellite')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'satellite' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Satellite</button>
         </div>
       ) : null}
 
       <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-white/60 bg-[#10271F]/90 px-4 py-2 text-[11px] font-bold text-white shadow-xl backdrop-blur-md">
-        {points.length} artisan{points.length > 1 ? 's' : ''} sur la carte
+        {points.length} artisan{points.length > 1 ? 's' : ''} · {visibleCount} visible{visibleCount > 1 ? 's' : ''}
       </div>
 
+      {mapNotice ? (
+        <div className="absolute left-3 top-16 z-20 max-w-[360px] rounded-2xl border border-amber-100 bg-white/95 px-3 py-2 text-xs font-semibold text-amber-800 shadow-lg backdrop-blur-md">
+          {mapNotice}
+        </div>
+      ) : null}
+
       {mapError ? (
-        <div className="absolute inset-x-4 top-16 z-20 rounded-2xl border border-red-100 bg-white/95 px-4 py-3 text-sm font-semibold text-red-700 shadow-lg">{mapError}</div>
+        <div className="absolute inset-x-4 bottom-16 z-20 rounded-2xl border border-red-100 bg-white/95 px-4 py-3 text-sm font-semibold text-red-700 shadow-lg">{mapError}</div>
       ) : null}
     </div>
   );
