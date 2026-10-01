@@ -236,6 +236,16 @@ OPENROUTESERVICE_TIMEOUT_SECONDS = float(os.getenv("OPENROUTESERVICE_TIMEOUT_SEC
 OPENROUTESERVICE_CACHE_SECONDS = int(os.getenv("OPENROUTESERVICE_CACHE_SECONDS", "900"))
 OPENROUTESERVICE_MATRIX_MAX_DESTINATIONS = int(os.getenv("OPENROUTESERVICE_MATRIX_MAX_DESTINATIONS", "100"))
 
+# GEO 8 - géocodage/adresses assistées. Le frontend passe par Django afin
+# de centraliser cache, timeout et fournisseur.
+NOMINATIM_BASE_URL = os.getenv(
+    "NOMINATIM_BASE_URL",
+    "https://nominatim.openstreetmap.org",
+).rstrip("/")
+NOMINATIM_TIMEOUT_SECONDS = float(os.getenv("NOMINATIM_TIMEOUT_SECONDS", "6"))
+NOMINATIM_CACHE_SECONDS = int(os.getenv("NOMINATIM_CACHE_SECONDS", "86400"))
+NOMINATIM_USER_AGENT = os.getenv("NOMINATIM_USER_AGENT", "ARTISAN_CI/1.0")
+
 
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 if REDIS_URL:

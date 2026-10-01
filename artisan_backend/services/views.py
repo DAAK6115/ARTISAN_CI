@@ -20,7 +20,7 @@ HUGGINGFACE_API_TOKEN = os.getenv('HUGGINGFACE_API_TOKEN', '')
 
 
 def service_queryset_for(request):
-    queryset = Service.objects.select_related('artisan').annotate(
+    queryset = Service.objects.select_related('artisan', 'artisan__portfolio').annotate(
         moyenne_avis_calc=Avg('avis__note'),
     )
     user = getattr(request, 'user', None)

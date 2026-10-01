@@ -14,6 +14,7 @@ from accounts.permissions import IsArtisan, IsClient
 from appointments.domain import generate_available_slots
 from services.models import Service
 from reviews.models import Review
+from integrations.geocoding import reverse_address, search_addresses
 from integrations.routing import driving_isochrone, driving_route_geometry, driving_route_metrics, routing_configured
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
@@ -59,6 +60,52 @@ def _matching_category_values(token):
         if normalized in normalized_label or normalized_label in normalized:
             matches.add(value)
     return matches
+
+
+class AddressSearchView(APIView):
+    """Suggestions d'adresses centralisées côté Django."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        query = str(request.query_params.get('q', '')).strip()
+        if len(query) < 3:
+            return Response({'results': []})
+        try:
+            limit = min(max(int(request.query_params.get('limit', 6)), 1), 8)
+        except (TypeError, ValueError):
+            limit = 6
+        country = str(request.query_params.get('country', '')).strip().lower()
+        results = search_addresses(
+            query,
+            limit=limit,
+            country_codes=[country] if country else None,
+        )
+        return Response({'results': results})
+
+
+class ReverseAddressView(APIView):
+    """Transforme une position GPS en adresse lisible."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @staticmethod
+    def _coordinate(value, name, minimum, maximum):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValidationError({name: 'Coordonnée invalide.'})
+        if number < minimum or number > maximum:
+            raise ValidationError({name: 'Coordonnée hors limites.'})
+        return number
+
+    def get(self, request):
+        latitude = self._coordinate(request.query_params.get('lat'), 'lat', -90, 90)
+        longitude = self._coordinate(request.query_params.get('lng'), 'lng', -180, 180)
+        result = reverse_address(latitude, longitude)
+        if not result:
+            return Response({'detail': "Adresse introuvable pour cette position."}, status=503)
+        return Response(result)
 
 
 class MyPortfolioView(generics.RetrieveUpdateAPIView):

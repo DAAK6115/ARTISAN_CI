@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from '../../utils/axiosInstance';
 import useAutoRefresh from '../../hooks/useAutoRefresh';
+import LocationActions from '../../components/LocationActions';
 
 const WEEKDAYS = [
   [0, 'Lundi'],
@@ -280,6 +281,10 @@ export default function ArtisanAppointments() {
                     <p><strong>🛠 Prestation :</strong> {appointment.service_titre}</p>
                     <p><strong>📅 Début :</strong> {new Date(appointment.date_rdv).toLocaleString('fr-FR')}</p>
                     <p><strong>⏱ Fin prévue :</strong> {new Date(appointment.date_fin).toLocaleString('fr-FR')}</p>
+                    <p><strong>📍 Lieu :</strong> {appointment.lieu_intervention === 'atelier' ? 'Dans votre atelier' : 'Chez le client'}</p>
+                    {appointment.lieu_intervention === 'chez_client' && appointment.intervention_adresse ? (
+                      <p className="mt-1 max-w-xl text-sm text-[#526159]">{appointment.intervention_adresse}</p>
+                    ) : null}
                   </div>
                   <div>
                     <span className="inline-block bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm">
@@ -294,6 +299,20 @@ export default function ArtisanAppointments() {
                 {appointment.motif_annulation && (
                   <p className="mt-2 text-sm text-red-600">Motif : {appointment.motif_annulation}</p>
                 )}
+
+                {appointment.lieu_intervention === 'chez_client'
+                  && appointment.intervention_latitude != null
+                  && appointment.intervention_longitude != null ? (
+                  <div className="mt-3 rounded-2xl bg-[#F7F9F7] p-3">
+                    <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-[#718078]">Itinéraire vers le client</p>
+                    <LocationActions
+                      latitude={appointment.intervention_latitude}
+                      longitude={appointment.intervention_longitude}
+                      label={appointment.intervention_adresse || appointment.client_nom}
+                      compact
+                    />
+                  </div>
+                ) : null}
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   {(appointment.transitions_autorisees || []).map((transition) => {

@@ -10,6 +10,9 @@ class ServiceSerializer(serializers.ModelSerializer):
     is_favori = serializers.SerializerMethodField()
     artisan_username = serializers.CharField(source='artisan.username', read_only=True)
     artisan_verified = serializers.SerializerMethodField()
+    artisan_localisation = serializers.SerializerMethodField()
+    artisan_latitude = serializers.SerializerMethodField()
+    artisan_longitude = serializers.SerializerMethodField()
     categorie_label = serializers.CharField(source='get_categorie_display', read_only=True)
     mode_tarification_label = serializers.CharField(source='get_mode_tarification_display', read_only=True)
     mode_intervention_label = serializers.CharField(source='get_mode_intervention_display', read_only=True)
@@ -18,7 +21,9 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = [
-            'id', 'artisan', 'artisan_username', 'artisan_verified', 'titre', 'description', 'prix',
+            'id', 'artisan', 'artisan_username', 'artisan_verified',
+            'artisan_localisation', 'artisan_latitude', 'artisan_longitude',
+            'titre', 'description', 'prix',
             'categorie', 'categorie_label', 'image', 'is_active',
             'mode_tarification', 'mode_tarification_label', 'duree_minutes',
             'delai_reservation_heures', 'mode_intervention', 'mode_intervention_label',
@@ -29,7 +34,8 @@ class ServiceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'artisan', 'date_creation', 'moyenne_avis', 'is_active', 'is_liked',
-            'is_favori', 'artisan_verified', 'categorie_label', 'mode_tarification_label',
+            'is_favori', 'artisan_verified', 'artisan_localisation',
+            'artisan_latitude', 'artisan_longitude', 'categorie_label', 'mode_tarification_label',
             'mode_intervention_label', 'zone_intervention_type_label',
         ]
 
@@ -80,6 +86,25 @@ class ServiceSerializer(serializers.ModelSerializer):
 
     def get_artisan_verified(self, obj):
         return bool(obj.artisan.is_active and obj.artisan.verification_status == 'verified')
+
+    @staticmethod
+    def _portfolio(obj):
+        try:
+            return obj.artisan.portfolio
+        except Exception:
+            return None
+
+    def get_artisan_localisation(self, obj):
+        portfolio = self._portfolio(obj)
+        return portfolio.localisation if portfolio else ''
+
+    def get_artisan_latitude(self, obj):
+        portfolio = self._portfolio(obj)
+        return float(portfolio.latitude) if portfolio and portfolio.latitude is not None else None
+
+    def get_artisan_longitude(self, obj):
+        portfolio = self._portfolio(obj)
+        return float(portfolio.longitude) if portfolio and portfolio.longitude is not None else None
 
     def get_moyenne_avis(self, obj):
         annotated = getattr(obj, 'moyenne_avis_calc', None)

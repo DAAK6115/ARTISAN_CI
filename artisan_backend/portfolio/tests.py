@@ -627,3 +627,86 @@ class InterventionCoverageDiscoveryTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['total'], 1)
         self.assertEqual(response.data['results'][0]['artisan_nom'], 'covered-zone')
+
+
+class AddressGeocodingTests(APITestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email='geo8-client@example.com',
+            username='geo8-client',
+            password='StrongPass123!',
+            role='client',
+        )
+        self.client.force_authenticate(self.user)
+
+    @override_settings(
+        NOMINATIM_BASE_URL='https://nominatim.example.test',
+        NOMINATIM_CACHE_SECONDS=1,
+        NOMINATIM_USER_AGENT='ARTISAN_CI-tests',
+    )
+    @patch('integrations.geocoding.requests.get')
+    def test_address_search_returns_normalized_suggestions(self, get_mock):
+        cache.clear()
+        response_mock = Mock()
+        response_mock.raise_for_status.return_value = None
+        response_mock.json.return_value = [{
+            'place_id': 123,
+            'lat': '5.398830',
+            'lon': '-3.956508',
+            'display_name': 'CHU Angré, Cocody, Abidjan, Côte d’Ivoire',
+            'type': 'hospital',
+            'category': 'amenity',
+            'address': {
+                'road': 'Rue L195',
+                'suburb': 'Angré',
+                'city': 'Abidjan',
+                'country': 'Côte d’Ivoire',
+            },
+        }]
+        get_mock.return_value = response_mock
+
+        response = self.client.get(reverse('address-search'), {'q': 'CHU Angré'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        row = response.data['results'][0]
+        self.assertEqual(row['latitude'], 5.39883)
+        self.assertEqual(row['longitude'], -3.956508)
+        self.assertIn('Angré', row['label'])
+        self.assertTrue(get_mock.call_args.args[0].endswith('/search'))
+        self.assertEqual(get_mock.call_args.kwargs['headers']['User-Agent'], 'ARTISAN_CI-tests')
+
+    @override_settings(
+        NOMINATIM_BASE_URL='https://nominatim.example.test',
+        NOMINATIM_CACHE_SECONDS=1,
+    )
+    @patch('integrations.geocoding.requests.get')
+    def test_reverse_geocoding_returns_address_for_gps_position(self, get_mock):
+        cache.clear()
+        response_mock = Mock()
+        response_mock.raise_for_status.return_value = None
+        response_mock.json.return_value = {
+            'place_id': 456,
+            'lat': '5.398830',
+            'lon': '-3.956508',
+            'display_name': 'Angré, Cocody, Abidjan, Côte d’Ivoire',
+            'address': {
+                'suburb': 'Angré',
+                'city': 'Abidjan',
+                'country': 'Côte d’Ivoire',
+            },
+        }
+        get_mock.return_value = response_mock
+
+        response = self.client.get(reverse('address-reverse'), {
+            'lat': '5.398830',
+            'lng': '-3.956508',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['latitude'], 5.39883)
+        self.assertIn('Angré', response.data['label'])
+        self.assertTrue(get_mock.call_args.args[0].endswith('/reverse'))
+
+    def test_geocoding_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(reverse('address-search'), {'q': 'Cocody'})
+        self.assertIn(response.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})

@@ -1,11 +1,15 @@
 from datetime import datetime, time, timedelta
+from decimal import Decimal
+from unittest.mock import patch
 
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import CustomUser
 from services.models import Service
+from portfolio.models import Portfolio
 from .models import Appointment, ArtisanAvailability, ArtisanTimeOff
 
 
@@ -67,6 +71,10 @@ class AppointmentSchedulingTests(APITestCase):
                 'service': self.service.id,
                 'date_rdv': self.aware_at(hour, minute).isoformat(),
                 'commentaires': 'Test de réservation',
+                'lieu_intervention': 'chez_client',
+                'intervention_adresse': 'Riviera 3, Cocody, Abidjan',
+                'intervention_latitude': 5.360100,
+                'intervention_longitude': -3.960200,
             },
             format='json',
         )
@@ -76,6 +84,8 @@ class AppointmentSchedulingTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         appointment = Appointment.objects.get()
         self.assertEqual(appointment.statut, 'en_attente')
+        self.assertEqual(appointment.lieu_intervention, 'chez_client')
+        self.assertEqual(appointment.intervention_adresse, 'Riviera 3, Cocody, Abidjan')
         self.assertEqual(appointment.date_fin - appointment.date_rdv, timedelta(minutes=60))
 
     def test_booking_outside_availability_is_rejected(self):
@@ -152,6 +162,71 @@ class AppointmentSchedulingTests(APITestCase):
         confirmed = self.client.post(f'/api/appointments/confirmer/{appointment_id}/')
         self.assertEqual(confirmed.status_code, status.HTTP_200_OK)
         self.assertEqual(confirmed.data['statut'], 'effectue')
+
+    def test_service_with_both_modes_requires_explicit_location_choice(self):
+        service = Service.objects.create(
+            artisan=self.artisan,
+            titre='Service hybride',
+            description='Atelier ou domicile',
+            prix='12000.00',
+            categorie='electronique',
+            duree_minutes=60,
+            delai_reservation_heures=0,
+            mode_intervention='les_deux',
+        )
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.post('/api/appointments/create/', {
+            'service': service.id,
+            'date_rdv': self.aware_at(15).isoformat(),
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('lieu_intervention', response.data)
+
+    def test_workshop_booking_does_not_store_client_address(self):
+        service = Service.objects.create(
+            artisan=self.artisan,
+            titre='Atelier test',
+            description='Atelier uniquement',
+            prix='8000.00',
+            categorie='electronique',
+            duree_minutes=60,
+            delai_reservation_heures=0,
+            mode_intervention='atelier',
+        )
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.post('/api/appointments/create/', {
+            'service': service.id,
+            'date_rdv': self.aware_at(14).isoformat(),
+            'lieu_intervention': 'chez_client',
+            'intervention_adresse': 'Adresse à ignorer',
+            'intervention_latitude': 5.36,
+            'intervention_longitude': -3.96,
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        appointment = Appointment.objects.get(pk=response.data['id'])
+        self.assertEqual(appointment.lieu_intervention, 'atelier')
+        self.assertEqual(appointment.intervention_adresse, '')
+        self.assertIsNone(appointment.intervention_latitude)
+
+    @override_settings(OPENROUTESERVICE_API_KEY='test-key')
+    @patch('appointments.serializers.driving_route_metrics')
+    def test_client_address_must_respect_service_road_radius(self, metrics_mock):
+        Portfolio.objects.create(
+            artisan=self.artisan,
+            localisation='Angré',
+            latitude=Decimal('5.398830'),
+            longitude=Decimal('-3.956508'),
+        )
+        self.service.zone_intervention_type = 'rayon'
+        self.service.rayon_intervention_km = 5
+        self.service.save(update_fields=['zone_intervention_type', 'rayon_intervention_km'])
+        metrics_mock.return_value = {
+            'client': {'distance_km': 8.2, 'duration_minutes': 20},
+        }
+        response = self.create_appointment(hour=13)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('intervention_adresse', response.data)
+        self.assertEqual(Appointment.objects.count(), 0)
 
     def test_other_artisan_cannot_delete_schedule(self):
         availability = ArtisanAvailability.objects.get(artisan=self.artisan)

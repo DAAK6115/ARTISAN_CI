@@ -23,6 +23,11 @@ class Appointment(models.Model):
         ('annule', 'Annulé (ancien statut)'),
     ]
 
+    LIEU_INTERVENTION_CHOICES = [
+        ('atelier', 'Dans l’atelier de l’artisan'),
+        ('chez_client', 'Chez le client'),
+    ]
+
     MOYENS_PAIEMENT = [
         ('wave', 'Wave'),
         ('orange_money', 'Orange Money'),
@@ -48,6 +53,18 @@ class Appointment(models.Model):
         db_index=True,
     )
     commentaires = models.TextField(blank=True, null=True)
+    lieu_intervention = models.CharField(
+        max_length=20,
+        choices=LIEU_INTERVENTION_CHOICES,
+        default='chez_client',
+    )
+    intervention_adresse = models.CharField(max_length=255, blank=True)
+    intervention_latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, blank=True, null=True
+    )
+    intervention_longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, blank=True, null=True
+    )
     resume = models.TextField(blank=True, null=True)
     motif_annulation = models.CharField(max_length=255, blank=True)
 

@@ -101,6 +101,9 @@ export default function MesRendezVous() {
                   <p className="text-sm text-gray-500">
                     Fin prévue : {new Date(rdv.date_fin).toLocaleString('fr-FR')}
                   </p>
+                  <p className="mt-1 text-sm font-semibold text-[#526159]">
+                    📍 {rdv.lieu_intervention === 'atelier' ? 'Dans l’atelier de l’artisan' : (rdv.intervention_adresse || 'Chez vous')}
+                  </p>
                 </div>
                 <div>{renderStatut(rdv.statut)}</div>
               </div>

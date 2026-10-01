@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import ArtisanMap from '../../components/ArtisanMap';
 import LocationActions from '../../components/LocationActions';
+import AddressAutocomplete from '../../components/AddressAutocomplete';
 import { reverseGeocode } from '../../utils/location';
 
 export default function ArtisanProfileEditPage() {
@@ -153,8 +154,23 @@ export default function ArtisanProfileEditPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-bold">
               Localisation
-              <input value={form.localisation} onChange={(e) => setForm({ ...form, localisation: e.target.value })} className="mt-1 w-full rounded-2xl border border-black/10 px-4 py-3 font-normal" placeholder="Ex. Cocody, Abidjan" />
-              <span className="mt-1 block text-xs font-normal text-[#829087]">Le GPS peut remplir ce champ automatiquement, mais vous gardez toujours la possibilité de le modifier.</span>
+              <div className="mt-1">
+                <AddressAutocomplete
+                  value={form.localisation}
+                  onChange={(value) => setForm((current) => ({ ...current, localisation: value }))}
+                  onSelect={({ address, latitude, longitude }) => {
+                    setForm((current) => ({
+                      ...current,
+                      localisation: address,
+                      latitude: Number(latitude.toFixed(6)),
+                      longitude: Number(longitude.toFixed(6)),
+                    }));
+                    setMessage('Adresse sélectionnée et position GPS mise à jour. Vous pouvez encore ajuster le texte ou déplacer le marqueur.');
+                  }}
+                  placeholder="Ex. CHU Angré, Cocody…"
+                  helpText="Choisissez une suggestion pour positionner précisément la carte. Le texte reste ensuite modifiable."
+                />
+              </div>
             </label>
             <label className="text-sm font-bold">
               WhatsApp
@@ -232,7 +248,7 @@ export default function ArtisanProfileEditPage() {
               <div className="mt-4">
                 <LocationActions latitude={form.latitude} longitude={form.longitude} label={form.localisation || 'ARTISAN_CI'} compact />
               </div>
-              <p className="mt-3 text-[11px] leading-4 text-[#8A958F]">Adresse détectée avec OpenStreetMap/Nominatim. La carte utilise les données OpenStreetMap.</p>
+              <p className="mt-3 text-[11px] leading-4 text-[#8A958F]">Adresse assistée par le service de géocodage ARTISAN_CI. La carte conserve ses attributions cartographiques.</p>
             </>
           ) : (
             <div className="mt-4 rounded-2xl bg-[#FFF7DD] p-4 text-sm text-[#745B15]">Utilisez votre position actuelle pour afficher la carte et les accès GPS.</div>

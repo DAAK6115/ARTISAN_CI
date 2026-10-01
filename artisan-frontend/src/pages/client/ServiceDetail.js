@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import PublicHeader from '../../components/PublicHeader';
+import AddressAutocomplete from '../../components/AddressAutocomplete';
+import { reverseGeocode } from '../../utils/location';
 import { getUserRole, isAuthenticated } from '../../utils/auth';
 
 function apiErrorMessage(error, fallback) {
@@ -44,6 +46,11 @@ export default function ServiceDetail({ publicMode = false }) {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [isLoadingReservation, setIsLoadingReservation] = useState(false);
+  const [interventionPlace, setInterventionPlace] = useState('');
+  const [interventionAddress, setInterventionAddress] = useState('');
+  const [interventionLatitude, setInterventionLatitude] = useState(null);
+  const [interventionLongitude, setInterventionLongitude] = useState(null);
+  const [locatingAddress, setLocatingAddress] = useState(false);
 
   const minDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -59,6 +66,20 @@ export default function ServiceDetail({ publicMode = false }) {
     }).catch(() => mounted && setMessage('Service introuvable ou indisponible.'));
     return () => { mounted = false; };
   }, [id]);
+
+  useEffect(() => {
+    if (!service) return;
+    if (service.mode_intervention === 'atelier') {
+      setInterventionPlace('atelier');
+    } else if (service.mode_intervention === 'chez_client') {
+      setInterventionPlace('chez_client');
+    } else {
+      setInterventionPlace('');
+    }
+    setInterventionAddress('');
+    setInterventionLatitude(null);
+    setInterventionLongitude(null);
+  }, [service?.id]);
 
   useEffect(() => {
     if (!selectedDate || !connectedClient) {
@@ -84,6 +105,19 @@ export default function ServiceDetail({ publicMode = false }) {
 
   const handleReservation = async () => {
     if (!selectedSlot) return;
+    if (!interventionPlace) {
+      setMessage('Choisissez le lieu de l’intervention.');
+      return;
+    }
+    if (interventionPlace === 'chez_client' && (
+      !interventionAddress.trim()
+      || !Number.isFinite(Number(interventionLatitude))
+      || !Number.isFinite(Number(interventionLongitude))
+    )) {
+      setMessage('Sélectionnez une adresse proposée afin de confirmer précisément le lieu de l’intervention.');
+      return;
+    }
+
     setIsLoadingReservation(true);
     setMessage('');
     try {
@@ -91,6 +125,10 @@ export default function ServiceDetail({ publicMode = false }) {
         service: Number(id),
         date_rdv: selectedSlot.start,
         commentaires: reservationComment.trim(),
+        lieu_intervention: interventionPlace,
+        intervention_adresse: interventionPlace === 'chez_client' ? interventionAddress.trim() : '',
+        intervention_latitude: interventionPlace === 'chez_client' ? interventionLatitude : null,
+        intervention_longitude: interventionPlace === 'chez_client' ? interventionLongitude : null,
       });
       setMessage('Demande envoyée. L’artisan doit maintenant l’accepter.');
       setSelectedSlot(null);
@@ -102,6 +140,39 @@ export default function ServiceDetail({ publicMode = false }) {
     } finally {
       setIsLoadingReservation(false);
     }
+  };
+
+  const useCurrentPositionForAppointment = () => {
+    if (!navigator.geolocation) {
+      setMessage('La géolocalisation n’est pas disponible sur cet appareil.');
+      return;
+    }
+    setLocatingAddress(true);
+    setMessage('Recherche de votre position actuelle…');
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        try {
+          const latitude = Number(coords.latitude.toFixed(6));
+          const longitude = Number(coords.longitude.toFixed(6));
+          const address = await reverseGeocode(latitude, longitude);
+          setInterventionAddress(address);
+          setInterventionLatitude(latitude);
+          setInterventionLongitude(longitude);
+          setMessage('Adresse d’intervention détectée. Vous pouvez choisir une autre suggestion si nécessaire.');
+        } catch {
+          setMessage('Votre position a été trouvée, mais l’adresse n’a pas pu être déterminée. Saisissez puis sélectionnez une adresse proposée.');
+        } finally {
+          setLocatingAddress(false);
+        }
+      },
+      (error) => {
+        setLocatingAddress(false);
+        setMessage(error.code === error.PERMISSION_DENIED
+          ? 'Autorisation de localisation refusée.'
+          : 'Impossible d’obtenir votre position actuelle.');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
+    );
   };
 
   const toggleFavori = async () => {
@@ -192,6 +263,76 @@ export default function ServiceDetail({ publicMode = false }) {
           <h2 className="mt-1 text-xl font-black">Choisissez un créneau</h2>
           {connectedClient ? (
             <>
+              <div className="mt-5 rounded-[24px] bg-[#F7F9F7] p-4">
+                <p className="text-sm font-black text-[#26352D]">Lieu de l’intervention</p>
+
+                {service.mode_intervention === 'les_deux' ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setInterventionPlace('chez_client')}
+                      className={`rounded-2xl border px-4 py-3 text-left text-sm font-bold ${interventionPlace === 'chez_client' ? 'border-[#0B6B50] bg-[#EAF4F0] text-[#0B6B50]' : 'border-[#DDE5E0] bg-white text-[#526159]'}`}
+                    >
+                      Chez moi
+                      <span className="mt-1 block text-xs font-normal">L’artisan se déplace à l’adresse choisie.</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInterventionPlace('atelier')}
+                      className={`rounded-2xl border px-4 py-3 text-left text-sm font-bold ${interventionPlace === 'atelier' ? 'border-[#0B6B50] bg-[#EAF4F0] text-[#0B6B50]' : 'border-[#DDE5E0] bg-white text-[#526159]'}`}
+                    >
+                      Chez l’artisan
+                      <span className="mt-1 block text-xs font-normal">Vous vous rendez dans son atelier.</span>
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm font-semibold text-[#526159]">
+                    {interventionPlace === 'atelier' ? 'Dans l’atelier de l’artisan' : 'Chez le client'}
+                  </p>
+                )}
+
+                {interventionPlace === 'atelier' ? (
+                  <div className="mt-3 rounded-2xl border border-[#DDE5E0] bg-white p-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#829087]">Adresse de l’artisan</p>
+                    <p className="mt-1 text-sm font-bold text-[#334139]">{service.artisan_localisation || 'Adresse à confirmer avec l’artisan'}</p>
+                  </div>
+                ) : null}
+
+                {interventionPlace === 'chez_client' ? (
+                  <div className="mt-3">
+                    <AddressAutocomplete
+                      value={interventionAddress}
+                      onChange={(value) => {
+                        setInterventionAddress(value);
+                        setInterventionLatitude(null);
+                        setInterventionLongitude(null);
+                      }}
+                      onSelect={({ address, latitude, longitude }) => {
+                        setInterventionAddress(address);
+                        setInterventionLatitude(Number(latitude.toFixed(6)));
+                        setInterventionLongitude(Number(longitude.toFixed(6)));
+                        setMessage('Adresse d’intervention confirmée sur la carte.');
+                      }}
+                      placeholder="Ex. Riviera 3, Cocody…"
+                      helpText="Sélectionnez une suggestion : ARTISAN_CI vérifiera aussi la zone d’intervention de l’artisan."
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={useCurrentPositionForAppointment}
+                        disabled={locatingAddress}
+                        className="rounded-xl border border-[#DDE5E0] bg-white px-3 py-2 text-xs font-black text-[#0B6B50] disabled:opacity-60"
+                      >
+                        {locatingAddress ? 'Localisation…' : '📍 Utiliser ma position actuelle'}
+                      </button>
+                      {Number.isFinite(Number(interventionLatitude)) && Number.isFinite(Number(interventionLongitude)) ? (
+                        <span className="rounded-full bg-[#EAF4F0] px-3 py-1.5 text-xs font-bold text-[#0B6B50]">✓ Position confirmée</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <label className="mt-5 block text-sm font-bold">Date souhaitée</label>
               <input type="date" min={minDate} value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="mt-2 w-full rounded-2xl border border-[#DDE5E0] px-4 py-3 text-sm" />
 

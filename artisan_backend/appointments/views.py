@@ -45,7 +45,12 @@ class CreateAppointmentView(generics.CreateAPIView):
                 subject='Nouvelle demande de rendez-vous',
                 message=(
                     f'Un client souhaite réserver {appointment.service.titre}.\n'
-                    f'Date : {appointment.date_rdv}'
+                    f'Date : {appointment.date_rdv}\n'
+                    + (
+                        f'Lieu : chez le client - {appointment.intervention_adresse}'
+                        if appointment.lieu_intervention == 'chez_client' and appointment.intervention_adresse
+                        else 'Lieu : atelier de l’artisan'
+                    )
                 ),
                 from_email=None,
                 recipient_list=[appointment.service.artisan.email],

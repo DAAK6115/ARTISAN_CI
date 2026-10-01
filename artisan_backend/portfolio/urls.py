@@ -7,6 +7,8 @@ from .views import (
     RealisationDetailView,
     RouteToArtisanView,
     TravelTimeIsochroneView,
+    AddressSearchView,
+    ReverseAddressView,
 )
 
 urlpatterns = [
@@ -15,6 +17,8 @@ urlpatterns = [
     path('realisation/add/', AddRealisationView.as_view(), name='add-realisation'),
     path('realisation/<int:pk>/', RealisationDetailView.as_view(), name='edit-realisation'),
     path('map/', PortfolioMapView.as_view(), name='portfolio-map'),
+    path('geocoding/search/', AddressSearchView.as_view(), name='address-search'),
+    path('geocoding/reverse/', ReverseAddressView.as_view(), name='address-reverse'),
     path('route-to-artisan/', RouteToArtisanView.as_view(), name='route-to-artisan'),
     path('isochrone/', TravelTimeIsochroneView.as_view(), name='travel-time-isochrone'),
 ]
