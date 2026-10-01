@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import Supercluster from 'supercluster';
 import AppIcon from './AppIcon';
+import axios from '../utils/axiosInstance';
 import LocationActions from './LocationActions';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './MapboxArtisanMap.css';
@@ -14,6 +15,9 @@ const STREETS_STYLE = 'mapbox://styles/mapbox/streets-v12';
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/standard-satellite';
 const CLUSTER_RADIUS = 68;
 const CLUSTER_MAX_ZOOM = 16;
+const ROUTE_SOURCE_ID = 'artisan-ci-route';
+const ROUTE_CASING_LAYER_ID = 'artisan-ci-route-casing';
+const ROUTE_LAYER_ID = 'artisan-ci-route-line';
 
 const OSM_FALLBACK_STYLE = {
   version: 8,
@@ -77,7 +81,7 @@ function travelLabel(artisan) {
   return null;
 }
 
-function PopupCard({ artisan, onNavigate }) {
+function PopupCard({ artisan, onNavigate, onShowRoute, canShowRoute }) {
   return (
     <article className="artisan-mapbox-card">
       <div className="artisan-mapbox-card__cover">
@@ -132,9 +136,18 @@ function PopupCard({ artisan, onNavigate }) {
           <p className="artisan-mapbox-card__meta"><AppIcon name="tools" className="h-3.5 w-3.5" /><span>{artisan.service_titles.slice(0, 2).join(' · ')}</span></p>
         ) : null}
 
-        <div className="artisan-mapbox-card__actions">
+        <div className="artisan-mapbox-card__actions artisan-mapbox-card__actions--three">
           <button type="button" className="artisan-mapbox-card__primary" onClick={() => onNavigate(`/artisans/${artisan.artisan_nom}`)}>Profil</button>
           <button type="button" onClick={() => onNavigate(`/client/messagerie/${artisan.artisan_nom}`)}>Message</button>
+          <button
+            type="button"
+            className="artisan-mapbox-card__route"
+            disabled={!canShowRoute}
+            title={canShowRoute ? 'Afficher l’itinéraire dans ARTISAN_CI' : 'Activez “Autour de moi” pour tracer l’itinéraire'}
+            onClick={() => onShowRoute(artisan)}
+          >
+            Itinéraire
+          </button>
         </div>
 
         <details className="artisan-mapbox-card__gps">
@@ -207,6 +220,63 @@ function logMapNotice(message) {
   }
 }
 
+function removeRouteLayers(map) {
+  if (!map) return;
+  try { if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getLayer(ROUTE_CASING_LAYER_ID)) map.removeLayer(ROUTE_CASING_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID); } catch (_) { /* ignore */ }
+}
+
+function routeCoordinates(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'LineString') return geometry.coordinates || [];
+  if (geometry.type === 'MultiLineString') return (geometry.coordinates || []).flat();
+  return [];
+}
+
+function drawRouteLayers(map, route, { fit = false } = {}) {
+  if (!map || !route?.geometry || !map.isStyleLoaded?.()) return;
+
+  const feature = {
+    type: 'Feature',
+    properties: {},
+    geometry: route.geometry,
+  };
+
+  try {
+    const existing = map.getSource(ROUTE_SOURCE_ID);
+    if (existing?.setData) existing.setData(feature);
+    else {
+      map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: feature });
+      map.addLayer({
+        id: ROUTE_CASING_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#FFFFFF', 'line-width': 9, 'line-opacity': 0.94 },
+      });
+      map.addLayer({
+        id: ROUTE_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#0B6B50', 'line-width': 5, 'line-opacity': 0.96 },
+      });
+    }
+
+    if (fit) {
+      const coordinates = routeCoordinates(route.geometry);
+      if (coordinates.length) {
+        const bounds = new mapboxgl.LngLatBounds();
+        coordinates.forEach((coordinate) => bounds.extend(coordinate));
+        map.fitBounds(bounds, { padding: { top: 100, right: 90, bottom: 110, left: 90 }, maxZoom: 15.5, duration: 850 });
+      }
+    }
+  } catch (error) {
+    logMapNotice(`Impossible de dessiner l’itinéraire : ${error?.message || error}`);
+  }
+}
+
 export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const token = (process.env.REACT_APP_MAPBOX_TOKEN || '').trim();
   const rawCustomStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
@@ -222,9 +292,13 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const basemapFailureCountRef = useRef(0);
   const renderClustersRef = useRef(() => {});
   const modeRef = useRef('standard');
+  const routeDataRef = useRef(null);
   const [mode, setMode] = useState(customStyle ? 'custom' : 'standard');
   const [mapError, setMapError] = useState('');
   const [visibleCount, setVisibleCount] = useState(0);
+  const [routeData, setRouteData] = useState(null);
+  const [routeLoadingId, setRouteLoadingId] = useState(null);
+  const [routeError, setRouteError] = useState('');
 
   const points = useMemo(
     () => artisans.filter((artisan) => artisan.latitude != null && artisan.longitude != null),
@@ -249,6 +323,42 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     })));
     return index;
   }, [points]);
+
+  const clearRoute = useCallback(() => {
+    const map = mapRef.current;
+    routeDataRef.current = null;
+    setRouteData(null);
+    setRouteError('');
+    if (map?.isStyleLoaded?.()) removeRouteLayers(map);
+  }, []);
+
+  const showRoute = useCallback(async (artisan) => {
+    if (!position || position.length < 2) {
+      setRouteError('Activez « Autour de moi » pour afficher l’itinéraire depuis votre position.');
+      return;
+    }
+    if (!artisan?.id) return;
+
+    setRouteLoadingId(artisan.id);
+    setRouteError('');
+    try {
+      const response = await axios.post('/portfolio/route-to-artisan/', {
+        artisan_id: artisan.id,
+        lat: Number(position[0]),
+        lng: Number(position[1]),
+      });
+      const nextRoute = { ...response.data, artisan };
+      routeDataRef.current = nextRoute;
+      setRouteData(nextRoute);
+      const map = mapRef.current;
+      if (map?.isStyleLoaded?.()) drawRouteLayers(map, nextRoute, { fit: true });
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      setRouteError(detail || 'Impossible de calculer cet itinéraire pour le moment.');
+    } finally {
+      setRouteLoadingId(null);
+    }
+  }, [position]);
 
   const clearRenderedMarkers = useCallback(() => {
     renderedMarkersRef.current.forEach((marker) => marker.remove());
@@ -316,7 +426,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
 
         const popupNode = document.createElement('div');
         const popupRoot = createRoot(popupNode);
-        popupRoot.render(<PopupCard artisan={artisan} onNavigate={navigate} />);
+        popupRoot.render(<PopupCard artisan={artisan} onNavigate={navigate} onShowRoute={showRoute} canShowRoute={Boolean(position)} />);
         popupRootsRef.current.push(popupRoot);
 
         const popup = new mapboxgl.Popup({ offset: 32, maxWidth: '290px', className: 'artisan-mapbox-popup' }).setDOMContent(popupNode);
@@ -335,7 +445,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     });
 
     setVisibleCount(individualCount);
-  }, [artisanById, clearRenderedMarkers, clusterIndex, navigate]);
+  }, [artisanById, clearRenderedMarkers, clusterIndex, navigate, position, showRoute]);
 
   useEffect(() => {
     renderClustersRef.current = renderClusters;
@@ -351,6 +461,9 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     window.clearTimeout(fallbackTimerRef.current);
     try {
       map.setStyle(OSM_FALLBACK_STYLE);
+      map.once('style.load', () => {
+        if (routeDataRef.current) drawRouteLayers(map, routeDataRef.current);
+      });
       setMode('fallback');
       logMapNotice('Fond OpenStreetMap activé automatiquement : Mapbox n’a pas chargé son fond de carte correctement.');
       setMapError(reason || '');
@@ -438,6 +551,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       clearRenderedMarkers();
       clientMarkerRef.current?.remove();
       clientMarkerRef.current = null;
+      routeDataRef.current = null;
       mapRef.current = null;
       map.remove();
     };
@@ -454,6 +568,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.once('style.load', () => {
       applyStandardConfig(map, mode);
       renderClustersRef.current?.();
+      if (routeDataRef.current) drawRouteLayers(map, routeDataRef.current);
       scheduleBasemapHealthCheck(map, mode);
     });
   }, [customStyle, mode, renderClusters, scheduleBasemapHealthCheck]);
@@ -516,6 +631,12 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.fitBounds(bounds, { padding: 72, maxZoom: 14.5, duration: 800 });
   }, [points, position]);
 
+  useEffect(() => {
+    if (!routeData) return;
+    const artisanStillVisible = artisanById.has(String(routeData.artisan_id || routeData.artisan?.id));
+    if (!position || !artisanStillVisible) clearRoute();
+  }, [artisanById, clearRoute, position, routeData]);
+
   if (!token) {
     return (
       <div className="grid min-h-[420px] place-items-center rounded-[24px] bg-[#F3F6F4] px-6 text-center">
@@ -537,6 +658,29 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
           <button type="button" onClick={() => setMode('standard')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'standard' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Premium 3D</button>
           <button type="button" onClick={() => setMode('streets')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'streets' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Rues</button>
           <button type="button" onClick={() => setMode('satellite')} className={`rounded-xl px-3 py-2 text-xs font-black ${mode === 'satellite' ? 'bg-[#0B6B50] text-white' : 'text-[#526159]'}`}>Satellite</button>
+        </div>
+      ) : null}
+
+      {routeLoadingId ? (
+        <div className="absolute right-3 top-3 z-20 rounded-2xl border border-white/70 bg-white/95 px-4 py-3 text-xs font-black text-[#334139] shadow-lg backdrop-blur-xl">
+          Calcul de l’itinéraire…
+        </div>
+      ) : routeData ? (
+        <aside className="artisan-route-summary">
+          <button type="button" onClick={clearRoute} aria-label="Fermer l’itinéraire">×</button>
+          <p>Itinéraire vers</p>
+          <strong>{routeData.artisan_nom || routeData.artisan?.artisan_nom}</strong>
+          <div>
+            {routeData.distance_km != null ? <span>🚗 {Number(routeData.distance_km).toFixed(1)} km</span> : null}
+            {routeData.duration_minutes != null ? <span>⏱ {routeData.duration_minutes} min</span> : null}
+          </div>
+        </aside>
+      ) : null}
+
+      {routeError ? (
+        <div className="artisan-route-error">
+          <span>{routeError}</span>
+          <button type="button" onClick={() => setRouteError('')}>×</button>
         </div>
       ) : null}
 

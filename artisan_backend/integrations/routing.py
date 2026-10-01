@@ -132,3 +132,80 @@ def driving_route_metrics(origin, destinations: Iterable[dict], profile='driving
             cache.set(item['cache_key'], metric, cache_seconds)
 
     return result
+
+
+def driving_route_geometry(origin, destination, profile='driving-car') -> dict:
+    """Retourne la géométrie GeoJSON et le résumé d'un trajet routier.
+
+    La clé openrouteservice reste côté backend. ``origin`` et ``destination``
+    sont fournis sous la forme ``(latitude, longitude)``. Un dictionnaire vide
+    est renvoyé quand le fournisseur n'est pas configuré ou indisponible.
+    """
+    api_key = getattr(settings, 'OPENROUTESERVICE_API_KEY', '').strip()
+    if not api_key or not origin or not destination:
+        return {}
+
+    try:
+        origin_lat, origin_lng = float(origin[0]), float(origin[1])
+        destination_lat, destination_lng = float(destination[0]), float(destination[1])
+    except (TypeError, ValueError, IndexError):
+        return {}
+
+    payload_key = {
+        'o': [round(origin_lat, 5), round(origin_lng, 5)],
+        'd': [round(destination_lat, 5), round(destination_lng, 5)],
+        'p': profile,
+        'kind': 'geometry',
+    }
+    digest = hashlib.sha256(json.dumps(payload_key, sort_keys=True).encode('utf-8')).hexdigest()[:32]
+    cache_key = f'ors:directions:{digest}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    base_url = getattr(
+        settings,
+        'OPENROUTESERVICE_BASE_URL',
+        'https://api.heigit.org/openrouteservice',
+    ).rstrip('/')
+    timeout = float(getattr(settings, 'OPENROUTESERVICE_TIMEOUT_SECONDS', 6))
+    cache_seconds = int(getattr(settings, 'OPENROUTESERVICE_CACHE_SECONDS', 900))
+    endpoint = f'{base_url}/v2/directions/{profile}/geojson'
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                'Authorization': api_key,
+                'Accept': 'application/geo+json, application/json',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'coordinates': [
+                    [origin_lng, origin_lat],
+                    [destination_lng, destination_lat],
+                ],
+                'instructions': False,
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        body = response.json()
+        feature = (body.get('features') or [None])[0]
+        if not feature or not feature.get('geometry'):
+            return {}
+        summary = (feature.get('properties') or {}).get('summary') or {}
+        distance_meters = summary.get('distance')
+        duration_seconds = summary.get('duration')
+        result = {
+            'geometry': feature['geometry'],
+            'distance_km': round(float(distance_meters) / 1000, 2) if distance_meters is not None else None,
+            'duration_minutes': max(1, int(round(float(duration_seconds) / 60))) if duration_seconds is not None else None,
+            'profile': profile,
+        }
+    except (requests.RequestException, ValueError, TypeError, IndexError, KeyError) as exc:
+        logger.warning('openrouteservice directions indisponible: %s', exc)
+        return {}
+
+    cache.set(cache_key, result, cache_seconds)
+    return result

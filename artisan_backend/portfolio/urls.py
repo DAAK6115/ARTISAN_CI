@@ -1,5 +1,12 @@
 from django.urls import path
-from .views import MyPortfolioView, PublicPortfolioView, AddRealisationView, PortfolioMapView, RealisationDetailView
+from .views import (
+    MyPortfolioView,
+    PublicPortfolioView,
+    AddRealisationView,
+    PortfolioMapView,
+    RealisationDetailView,
+    RouteToArtisanView,
+)
 
 urlpatterns = [
     path('me/', MyPortfolioView.as_view(), name='my-portfolio'),
@@ -7,4 +14,5 @@ urlpatterns = [
     path('realisation/add/', AddRealisationView.as_view(), name='add-realisation'),
     path('realisation/<int:pk>/', RealisationDetailView.as_view(), name='edit-realisation'),
     path('map/', PortfolioMapView.as_view(), name='portfolio-map'),
+    path('route-to-artisan/', RouteToArtisanView.as_view(), name='route-to-artisan'),
 ]

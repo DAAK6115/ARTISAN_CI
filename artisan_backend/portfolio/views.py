@@ -6,14 +6,15 @@ from django.db.models import Avg, Count, Prefetch, Q
 from django.utils import timezone
 from geopy.distance import geodesic
 from rest_framework import generics, permissions
+from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from accounts.permissions import IsArtisan
+from accounts.permissions import IsArtisan, IsClient
 from appointments.domain import generate_available_slots
 from services.models import Service
 from reviews.models import Review
-from integrations.routing import driving_route_metrics, routing_configured
+from integrations.routing import driving_route_geometry, driving_route_metrics, routing_configured
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
 
@@ -462,6 +463,70 @@ class PortfolioMapView(generics.ListAPIView):
                 'provider': 'openrouteservice',
                 'profile': 'driving-car',
             },
+        })
+
+
+class RouteToArtisanView(APIView):
+    """Calcule un itinéraire routier client → artisan sans exposer la clé ORS."""
+
+    permission_classes = [IsClient]
+
+    @staticmethod
+    def _coordinate(value, name, minimum, maximum):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValidationError({name: 'Coordonnée invalide.'})
+        if number < minimum or number > maximum:
+            raise ValidationError({name: 'Coordonnée hors limites.'})
+        return number
+
+    def post(self, request):
+        artisan_id = request.data.get('artisan_id')
+        if not artisan_id:
+            raise ValidationError({'artisan_id': 'Artisan requis.'})
+
+        origin_lat = self._coordinate(request.data.get('lat'), 'lat', -90, 90)
+        origin_lng = self._coordinate(request.data.get('lng'), 'lng', -180, 180)
+
+        portfolio = (
+            Portfolio.objects.filter(
+                id=artisan_id,
+                visible=True,
+                artisan__is_active=True,
+            )
+            .select_related('artisan')
+            .first()
+        )
+        if not portfolio:
+            return Response({'detail': 'Artisan introuvable.'}, status=404)
+        if portfolio.latitude is None or portfolio.longitude is None:
+            raise ValidationError({'artisan_id': "Cet artisan n'a pas de position GPS exploitable."})
+        if not routing_configured():
+            return Response(
+                {'detail': "Le calcul d'itinéraire n'est pas configuré."},
+                status=503,
+            )
+
+        route = driving_route_geometry(
+            (origin_lat, origin_lng),
+            (float(portfolio.latitude), float(portfolio.longitude)),
+        )
+        if not route:
+            return Response(
+                {'detail': "L'itinéraire est temporairement indisponible."},
+                status=503,
+            )
+
+        return Response({
+            'artisan_id': portfolio.id,
+            'artisan_nom': portfolio.artisan.username,
+            'origin': {'latitude': origin_lat, 'longitude': origin_lng},
+            'destination': {
+                'latitude': float(portfolio.latitude),
+                'longitude': float(portfolio.longitude),
+            },
+            **route,
         })
 
 

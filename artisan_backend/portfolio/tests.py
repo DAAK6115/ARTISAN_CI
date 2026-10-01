@@ -373,3 +373,74 @@ class PortfolioLocationAndPhoneValidationTests(APITestCase):
         )
         self.assertFalse(serializer.is_valid())
         self.assertIn('whatsapp', serializer.errors)
+
+
+class RouteToArtisanTests(APITestCase):
+    def setUp(self):
+        self.client_user = CustomUser.objects.create_user(
+            email='route-client@example.com',
+            username='route-client',
+            password='StrongPass123!',
+            role='client',
+        )
+        self.artisan = CustomUser.objects.create_user(
+            email='route-artisan@example.com',
+            username='route-artisan',
+            password='StrongPass123!',
+            role='artisan',
+        )
+        self.portfolio = Portfolio.objects.create(
+            artisan=self.artisan,
+            localisation='Cocody Angré',
+            latitude=Decimal('5.398830'),
+            longitude=Decimal('-3.956508'),
+            visible=True,
+        )
+
+    @override_settings(
+        OPENROUTESERVICE_API_KEY='test-key',
+        OPENROUTESERVICE_BASE_URL='https://api.heigit.org/openrouteservice',
+        OPENROUTESERVICE_CACHE_SECONDS=1,
+    )
+    @patch('integrations.routing.requests.post')
+    def test_client_receives_route_geometry_without_exposing_provider_key(self, post_mock):
+        cache.clear()
+        response_mock = Mock()
+        response_mock.raise_for_status.return_value = None
+        response_mock.json.return_value = {
+            'features': [{
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': [[-3.9600, 5.3950], [-3.956508, 5.398830]],
+                },
+                'properties': {
+                    'summary': {'distance': 1800.0, 'duration': 420.0},
+                },
+            }],
+        }
+        post_mock.return_value = response_mock
+        self.client.force_authenticate(self.client_user)
+
+        response = self.client.post(reverse('route-to-artisan'), {
+            'artisan_id': self.portfolio.id,
+            'lat': 5.3950,
+            'lng': -3.9600,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['artisan_nom'], 'route-artisan')
+        self.assertEqual(response.data['geometry']['type'], 'LineString')
+        self.assertEqual(float(response.data['distance_km']), 1.8)
+        self.assertEqual(response.data['duration_minutes'], 7)
+        self.assertNotIn('api_key', response.data)
+        post_mock.assert_called_once()
+        self.assertTrue(post_mock.call_args.args[0].endswith('/v2/directions/driving-car/geojson'))
+
+    def test_route_endpoint_is_reserved_for_authenticated_clients(self):
+        response = self.client.post(reverse('route-to-artisan'), {
+            'artisan_id': self.portfolio.id,
+            'lat': 5.3950,
+            'lng': -3.9600,
+        }, format='json')
+        self.assertIn(response.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
