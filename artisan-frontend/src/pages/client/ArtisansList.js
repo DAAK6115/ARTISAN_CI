@@ -62,6 +62,10 @@ export default function ArtisansList() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [position, setPosition] = useState(null);
   const [radius, setRadius] = useState('10');
+  const [proximityMode, setProximityMode] = useState('distance');
+  const [travelTime, setTravelTime] = useState('30');
+  const [isochrone, setIsochrone] = useState(null);
+  const [isochroneLoading, setIsochroneLoading] = useState(false);
   const [scope, setScope] = useState('all');
   const [view, setView] = useState('map');
   const [locating, setLocating] = useState(false);
@@ -81,6 +85,8 @@ export default function ArtisansList() {
   const loadArtisans = useCallback(async ({
     currentPosition = position,
     currentRadius = radius,
+    currentProximityMode = proximityMode,
+    currentTravelTime = travelTime,
     currentSearch = search,
     currentCategory = selectedCategory,
     currentScope = scope,
@@ -110,7 +116,10 @@ export default function ArtisansList() {
         params.lng = currentPosition[1];
         params.route_metrics = 'true';
       }
-      if (currentScope === 'nearby') params.radius = Number(currentRadius);
+      if (currentScope === 'nearby') {
+        if (currentProximityMode === 'time') params.travel_time_minutes = Number(currentTravelTime);
+        else params.radius = Number(currentRadius);
+      }
 
       const response = await axios.get('/portfolio/map/', { params });
       const data = response.data || {};
@@ -140,7 +149,7 @@ export default function ArtisansList() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [position, radius, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, availability]);
+  }, [position, radius, proximityMode, travelTime, search, selectedCategory, scope, minRating, verifiedOnly, homeServiceOnly, availability]);
 
   const activateNearbySearch = useCallback(() => {
     if (!navigator.geolocation) {
@@ -182,7 +191,34 @@ export default function ArtisansList() {
       loadArtisans();
     }, search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
-  }, [loadArtisans, search, selectedCategory, radius, scope, position, minRating, verifiedOnly, homeServiceOnly, availability]);
+  }, [loadArtisans, search, selectedCategory, radius, proximityMode, travelTime, scope, position, minRating, verifiedOnly, homeServiceOnly, availability]);
+
+  useEffect(() => {
+    let active = true;
+    if (scope !== 'nearby' || proximityMode !== 'time' || !position || !routing.configured) {
+      setIsochrone(null);
+      setIsochroneLoading(false);
+      return () => { active = false; };
+    }
+
+    setIsochroneLoading(true);
+    axios.post('/portfolio/isochrone/', {
+      lat: Number(position[0]),
+      lng: Number(position[1]),
+      minutes: Number(travelTime),
+    })
+      .then((response) => {
+        if (active) setIsochrone(response.data || null);
+      })
+      .catch(() => {
+        if (active) setIsochrone(null);
+      })
+      .finally(() => {
+        if (active) setIsochroneLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [position, proximityMode, routing.configured, scope, travelTime]);
 
   useAutoRefresh(() => loadArtisans({ silent: true }), { intervalMs: 30000 });
 
@@ -197,6 +233,7 @@ export default function ArtisansList() {
 
   const setSearchEverywhere = () => {
     setScope('all');
+    setIsochrone(null);
     setMessage('Recherche élargie activée : vous pouvez saisir une ville, une commune, un métier ou une spécialité.');
   };
 
@@ -250,18 +287,53 @@ export default function ArtisansList() {
           </select>
 
           {scope === 'nearby' && (
-            <select
-              value={radius}
-              onChange={(event) => setRadius(event.target.value)}
-              className="rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-sm font-semibold"
-              aria-label="Rayon de recherche"
-            >
-              <option value="5">Dans 5 km</option>
-              <option value="10">Dans 10 km</option>
-              <option value="25">Dans 25 km</option>
-              <option value="50">Dans 50 km</option>
-              <option value="100">Dans 100 km</option>
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex rounded-2xl bg-[#F5F7F5] p-1 ring-1 ring-black/5" aria-label="Mode de proximité">
+                <button
+                  type="button"
+                  onClick={() => setProximityMode('distance')}
+                  className={`rounded-xl px-3 py-2 text-xs font-black ${proximityMode === 'distance' ? 'bg-white text-[#0B6B50] shadow-sm' : 'text-[#718078]'}`}
+                >
+                  Distance
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProximityMode('time')}
+                  disabled={!routing.configured}
+                  title={routing.configured ? 'Rechercher par temps de trajet réel' : 'Configurez openrouteservice pour utiliser ce mode'}
+                  className={`rounded-xl px-3 py-2 text-xs font-black ${proximityMode === 'time' ? 'bg-[#0B6B50] text-white shadow-sm' : 'text-[#718078]'} disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  Temps de trajet
+                </button>
+              </div>
+
+              {proximityMode === 'time' ? (
+                <select
+                  value={travelTime}
+                  onChange={(event) => setTravelTime(event.target.value)}
+                  className="rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-sm font-semibold"
+                  aria-label="Temps de trajet maximal"
+                >
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                  <option value="45">45 min</option>
+                  <option value="60">1 heure</option>
+                </select>
+              ) : (
+                <select
+                  value={radius}
+                  onChange={(event) => setRadius(event.target.value)}
+                  className="rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-sm font-semibold"
+                  aria-label="Rayon de recherche"
+                >
+                  <option value="5">Dans 5 km</option>
+                  <option value="10">Dans 10 km</option>
+                  <option value="25">Dans 25 km</option>
+                  <option value="50">Dans 50 km</option>
+                  <option value="100">Dans 100 km</option>
+                </select>
+              )}
+            </div>
           )}
 
           {scope === 'nearby' ? (
@@ -277,7 +349,7 @@ export default function ArtisansList() {
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-3 py-1.5 text-xs font-black ${scope === 'nearby' ? 'bg-[#EAF4F0] text-[#0B6B50]' : 'bg-[#FFF1E4] text-[#9A521C]'}`}>
-            {scope === 'nearby' ? `Autour de vous · ${radius} km` : 'Recherche élargie'}
+            {scope === 'nearby' ? (proximityMode === 'time' ? `Accessible en ≤ ${travelTime === '60' ? '1 h' : `${travelTime} min`}` : `Autour de vous · ${radius} km`) : 'Recherche élargie'}
           </span>
           {categories.slice(0, 6).map((category) => (
             <button
@@ -357,6 +429,12 @@ export default function ArtisansList() {
         </div>
       )}
 
+      {scope === 'nearby' && proximityMode === 'time' && isochroneLoading && (
+        <div className="mt-4 rounded-2xl border border-[#DDE5E0] bg-white px-4 py-3 text-xs font-semibold text-[#66736D]">
+          Calcul de la zone accessible en {travelTime === '60' ? '1 heure' : `${travelTime} minutes`}…
+        </div>
+      )}
+
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-[#718078]">{resultLabel}</p>
         {scope === 'nearby' && (
@@ -366,10 +444,10 @@ export default function ArtisansList() {
 
       {view === 'map' && (
         <div className="mt-4 overflow-hidden rounded-[28px] border border-black/5 bg-white p-2 shadow-[0_12px_35px_rgba(20,38,30,0.06)]">
-          <MapboxArtisanMap artisans={mapPoints} position={position} />
+          <MapboxArtisanMap artisans={mapPoints} position={position} isochrone={scope === 'nearby' && proximityMode === 'time' ? isochrone : null} />
           {!loading && mapPoints.length === 0 && (
             <div className="border-t border-black/5 px-4 py-4 text-center text-sm text-[#718078]">
-              Aucun artisan géolocalisé ne correspond à cette recherche. Essayez d’augmenter le rayon ou d’élargir la recherche.
+              Aucun artisan géolocalisé ne correspond à cette recherche. Essayez d’augmenter la distance ou le temps de trajet, ou d’élargir la recherche.
             </div>
           )}
         </div>

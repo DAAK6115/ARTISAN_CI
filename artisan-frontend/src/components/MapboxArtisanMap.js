@@ -18,6 +18,9 @@ const CLUSTER_MAX_ZOOM = 16;
 const ROUTE_SOURCE_ID = 'artisan-ci-route';
 const ROUTE_CASING_LAYER_ID = 'artisan-ci-route-casing';
 const ROUTE_LAYER_ID = 'artisan-ci-route-line';
+const ISOCHRONE_SOURCE_ID = 'artisan-ci-isochrone';
+const ISOCHRONE_FILL_LAYER_ID = 'artisan-ci-isochrone-fill';
+const ISOCHRONE_OUTLINE_LAYER_ID = 'artisan-ci-isochrone-outline';
 
 const OSM_FALLBACK_STYLE = {
   version: 8,
@@ -227,6 +230,77 @@ function removeRouteLayers(map) {
   try { if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID); } catch (_) { /* ignore */ }
 }
 
+function removeIsochroneLayers(map) {
+  if (!map) return;
+  try { if (map.getLayer(ISOCHRONE_OUTLINE_LAYER_ID)) map.removeLayer(ISOCHRONE_OUTLINE_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getLayer(ISOCHRONE_FILL_LAYER_ID)) map.removeLayer(ISOCHRONE_FILL_LAYER_ID); } catch (_) { /* ignore */ }
+  try { if (map.getSource(ISOCHRONE_SOURCE_ID)) map.removeSource(ISOCHRONE_SOURCE_ID); } catch (_) { /* ignore */ }
+}
+
+function collectGeometryCoordinates(geometry) {
+  const output = [];
+  const visit = (value) => {
+    if (!Array.isArray(value)) return;
+    if (value.length >= 2 && typeof value[0] === 'number' && typeof value[1] === 'number') {
+      output.push(value);
+      return;
+    }
+    value.forEach(visit);
+  };
+  visit(geometry?.coordinates);
+  return output;
+}
+
+function drawIsochroneLayers(map, isochrone, { fit = false } = {}) {
+  if (!map || !isochrone?.geometry || !map.isStyleLoaded?.()) return;
+
+  const feature = {
+    type: 'Feature',
+    properties: { travel_time_minutes: isochrone.travel_time_minutes },
+    geometry: isochrone.geometry,
+  };
+
+  try {
+    const existing = map.getSource(ISOCHRONE_SOURCE_ID);
+    if (existing?.setData) existing.setData(feature);
+    else {
+      map.addSource(ISOCHRONE_SOURCE_ID, { type: 'geojson', data: feature });
+      const beforeRoute = map.getLayer(ROUTE_CASING_LAYER_ID) ? ROUTE_CASING_LAYER_ID : undefined;
+      map.addLayer({
+        id: ISOCHRONE_FILL_LAYER_ID,
+        type: 'fill',
+        source: ISOCHRONE_SOURCE_ID,
+        paint: {
+          'fill-color': '#0B6B50',
+          'fill-opacity': 0.14,
+        },
+      }, beforeRoute);
+      map.addLayer({
+        id: ISOCHRONE_OUTLINE_LAYER_ID,
+        type: 'line',
+        source: ISOCHRONE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#0B6B50',
+          'line-width': 2.5,
+          'line-opacity': 0.86,
+        },
+      }, beforeRoute);
+    }
+
+    if (fit) {
+      const coordinates = collectGeometryCoordinates(isochrone.geometry);
+      if (coordinates.length) {
+        const bounds = new mapboxgl.LngLatBounds();
+        coordinates.forEach((coordinate) => bounds.extend(coordinate));
+        map.fitBounds(bounds, { padding: { top: 95, right: 70, bottom: 100, left: 70 }, maxZoom: 14.5, duration: 850 });
+      }
+    }
+  } catch (error) {
+    logMapNotice(`Impossible de dessiner l’isochrone : ${error?.message || error}`);
+  }
+}
+
 function routeCoordinates(geometry) {
   if (!geometry) return [];
   if (geometry.type === 'LineString') return geometry.coordinates || [];
@@ -277,7 +351,7 @@ function drawRouteLayers(map, route, { fit = false } = {}) {
   }
 }
 
-export default function MapboxArtisanMap({ artisans = [], position = null }) {
+export default function MapboxArtisanMap({ artisans = [], position = null, isochrone = null }) {
   const token = (process.env.REACT_APP_MAPBOX_TOKEN || '').trim();
   const rawCustomStyle = (process.env.REACT_APP_MAPBOX_STYLE_URL || '').trim();
   const customStyle = normalizeCustomStyle(rawCustomStyle);
@@ -293,6 +367,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
   const renderClustersRef = useRef(() => {});
   const modeRef = useRef('standard');
   const routeDataRef = useRef(null);
+  const isochroneRef = useRef(isochrone);
   const [mode, setMode] = useState(customStyle ? 'custom' : 'standard');
   const [mapError, setMapError] = useState('');
   const [visibleCount, setVisibleCount] = useState(0);
@@ -462,6 +537,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     try {
       map.setStyle(OSM_FALLBACK_STYLE);
       map.once('style.load', () => {
+        if (isochroneRef.current) drawIsochroneLayers(map, isochroneRef.current);
         if (routeDataRef.current) drawRouteLayers(map, routeDataRef.current);
       });
       setMode('fallback');
@@ -520,6 +596,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       setMapError('');
       if (!customStyle) applyStandardConfig(map, 'standard');
       handleRender();
+      if (isochroneRef.current) drawIsochroneLayers(map, isochroneRef.current, { fit: true });
       scheduleBasemapHealthCheck(map, initialMode);
     });
 
@@ -552,6 +629,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
       clientMarkerRef.current?.remove();
       clientMarkerRef.current = null;
       routeDataRef.current = null;
+      isochroneRef.current = null;
       mapRef.current = null;
       map.remove();
     };
@@ -568,6 +646,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     map.once('style.load', () => {
       applyStandardConfig(map, mode);
       renderClustersRef.current?.();
+      if (isochroneRef.current) drawIsochroneLayers(map, isochroneRef.current);
       if (routeDataRef.current) drawRouteLayers(map, routeDataRef.current);
       scheduleBasemapHealthCheck(map, mode);
     });
@@ -610,7 +689,20 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapDomReady(map)) return;
+    isochroneRef.current = isochrone;
+    if (!map || !map.isStyleLoaded?.()) return;
+
+    if (!isochrone?.geometry) {
+      removeIsochroneLayers(map);
+      return;
+    }
+
+    drawIsochroneLayers(map, isochrone, { fit: true });
+  }, [isochrone]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapDomReady(map) || isochrone?.geometry) return;
 
     const bounds = new mapboxgl.LngLatBounds();
     points.forEach((artisan) => bounds.extend([Number(artisan.longitude), Number(artisan.latitude)]));
@@ -629,7 +721,7 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
     }
 
     map.fitBounds(bounds, { padding: 72, maxZoom: 14.5, duration: 800 });
-  }, [points, position]);
+  }, [points, position, isochrone]);
 
   useEffect(() => {
     if (!routeData) return;
@@ -681,6 +773,13 @@ export default function MapboxArtisanMap({ artisans = [], position = null }) {
         <div className="artisan-route-error">
           <span>{routeError}</span>
           <button type="button" onClick={() => setRouteError('')}>×</button>
+        </div>
+      ) : null}
+
+      {isochrone?.geometry ? (
+        <div className="pointer-events-none absolute bottom-16 left-3 z-10 flex items-center gap-2 rounded-2xl border border-white/70 bg-white/95 px-3 py-2 text-[11px] font-black text-[#334139] shadow-lg backdrop-blur-xl">
+          <span className="h-3 w-3 rounded-full border-2 border-[#0B6B50] bg-[#0B6B50]/15" />
+          Zone accessible en {Number(isochrone.travel_time_minutes) === 60 ? '1 h' : `${isochrone.travel_time_minutes} min`}
         </div>
       ) : null}
 

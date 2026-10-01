@@ -14,7 +14,7 @@ from accounts.permissions import IsArtisan, IsClient
 from appointments.domain import generate_available_slots
 from services.models import Service
 from reviews.models import Review
-from integrations.routing import driving_route_geometry, driving_route_metrics, routing_configured
+from integrations.routing import driving_isochrone, driving_route_geometry, driving_route_metrics, routing_configured
 from .models import Portfolio, Realisation
 from .serializers import PortfolioSerializer, RealisationSerializer
 
@@ -173,6 +173,18 @@ class PortfolioMapView(generics.ListAPIView):
             raise ValidationError({'availability': 'Disponibilité invalide.'})
         return value
 
+    def _travel_time_minutes(self):
+        raw = str(self.request.query_params.get('travel_time_minutes', '')).strip()
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise ValidationError({'travel_time_minutes': 'Temps de trajet invalide.'})
+        if value not in {15, 30, 45, 60}:
+            raise ValidationError({'travel_time_minutes': 'Choisissez 15, 30, 45 ou 60 minutes.'})
+        return value
+
     def _bool_param(self, name):
         raw = str(self.request.query_params.get(name, '')).strip().lower()
         if raw in {'', '0', 'false', 'no', 'non'}:
@@ -319,7 +331,8 @@ class PortfolioMapView(generics.ListAPIView):
         verified_only = self._bool_param('verified')
         home_service_only = self._bool_param('home_service')
         availability_filter = self._availability_filter()
-        route_metrics_requested = self._bool_param('route_metrics')
+        travel_time_minutes = self._travel_time_minutes()
+        route_metrics_requested = self._bool_param('route_metrics') or travel_time_minutes is not None
 
         if scope not in {'all', 'nearby'}:
             raise ValidationError({'scope': 'Mode de recherche invalide.'})
@@ -327,16 +340,25 @@ class PortfolioMapView(generics.ListAPIView):
         queryset = self._apply_search(self._base_queryset(), search)
         portfolios = list(queryset.order_by('artisan__username'))
         coordinates = self._coordinates()
-        radius = self._radius() if scope == 'nearby' else None
+        radius = self._radius() if scope == 'nearby' and travel_time_minutes is None else None
 
         portfolios = self._with_distances(portfolios, coordinates)
 
-        # Un trajet routier ne peut pas être plus court que la distance à vol
-        # d'oiseau. Ce premier filtre évite donc d'envoyer au fournisseur des
-        # destinations qui sont déjà hors du rayon demandé.
-        if scope == 'nearby':
-            if coordinates is None:
-                raise ValidationError({'localisation': 'Votre position est requise pour une recherche autour de vous.'})
+        if scope == 'nearby' and coordinates is None:
+            raise ValidationError({'localisation': 'Votre position est requise pour une recherche autour de vous.'})
+
+        if travel_time_minutes is not None and scope != 'nearby':
+            raise ValidationError({'travel_time_minutes': 'La recherche par temps nécessite le mode « Autour de moi ».'})
+        if travel_time_minutes is not None and not routing_configured():
+            return Response(
+                {'detail': "La recherche par temps de trajet n'est pas configurée sur le serveur."},
+                status=503,
+            )
+
+        # Pour le mode distance, un trajet routier ne peut pas être plus court
+        # que la distance à vol d'oiseau. Ce préfiltre réduit les destinations
+        # envoyées à ORS. En mode temps, on laisse la Matrix décider.
+        if scope == 'nearby' and radius is not None:
             portfolios = [
                 portfolio for portfolio in portfolios
                 if portfolio.distance_km_value is not None and portfolio.distance_km_value <= radius
@@ -360,9 +382,16 @@ class PortfolioMapView(generics.ListAPIView):
             portfolio.rating_average_value = stats.get('average')
             portfolio.review_count_value = stats.get('count', 0)
 
-        # Si openrouteservice a répondu, le rayon correspond désormais à la
-        # distance routière. Sinon on conserve le fallback géodésique.
-        if scope == 'nearby':
+        # Le mode distance utilise la distance routière quand elle existe.
+        # Le mode temps exige une durée ORS réelle : aucun fallback à vol
+        # d'oiseau ne peut prétendre représenter 15/30/45/60 minutes de trajet.
+        if scope == 'nearby' and travel_time_minutes is not None:
+            portfolios = [
+                portfolio for portfolio in portfolios
+                if getattr(portfolio, 'route_duration_minutes_value', None) is not None
+                and getattr(portfolio, 'route_duration_minutes_value') <= travel_time_minutes
+            ]
+        elif scope == 'nearby' and radius is not None:
             portfolios = [
                 portfolio for portfolio in portfolios
                 if self._effective_distance(portfolio) is not None
@@ -456,13 +485,53 @@ class PortfolioMapView(generics.ListAPIView):
             'available_filters': available_filters,
             'total': len(portfolios),
             'scope': scope,
+            'search_mode': 'time' if travel_time_minutes is not None else ('distance' if scope == 'nearby' else 'all'),
             'radius_km': radius,
+            'travel_time_minutes': travel_time_minutes,
             'routing': {
                 'requested': route_metrics_requested,
                 'configured': routing_configured(),
                 'provider': 'openrouteservice',
                 'profile': 'driving-car',
             },
+        })
+
+
+class TravelTimeIsochroneView(APIView):
+    """Retourne la zone réellement accessible en X minutes depuis le client."""
+
+    permission_classes = [IsClient]
+    ALLOWED_MINUTES = {15, 30, 45, 60}
+
+    @staticmethod
+    def _coordinate(value, name, minimum, maximum):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValidationError({name: 'Coordonnée invalide.'})
+        if number < minimum or number > maximum:
+            raise ValidationError({name: 'Coordonnée hors limites.'})
+        return number
+
+    def post(self, request):
+        origin_lat = self._coordinate(request.data.get('lat'), 'lat', -90, 90)
+        origin_lng = self._coordinate(request.data.get('lng'), 'lng', -180, 180)
+        try:
+            minutes = int(request.data.get('minutes'))
+        except (TypeError, ValueError):
+            raise ValidationError({'minutes': 'Temps de trajet invalide.'})
+        if minutes not in self.ALLOWED_MINUTES:
+            raise ValidationError({'minutes': 'Choisissez 15, 30, 45 ou 60 minutes.'})
+        if not routing_configured():
+            return Response({'detail': "Les isochrones ne sont pas configurées sur le serveur."}, status=503)
+
+        zone = driving_isochrone((origin_lat, origin_lng), minutes)
+        if not zone:
+            return Response({'detail': "La zone de trajet est temporairement indisponible."}, status=503)
+
+        return Response({
+            'origin': {'latitude': origin_lat, 'longitude': origin_lng},
+            **zone,
         })
 
 

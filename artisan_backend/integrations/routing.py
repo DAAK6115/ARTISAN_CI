@@ -209,3 +209,82 @@ def driving_route_geometry(origin, destination, profile='driving-car') -> dict:
 
     cache.set(cache_key, result, cache_seconds)
     return result
+
+
+def driving_isochrone(origin, minutes, profile='driving-car') -> dict:
+    """Retourne la zone GeoJSON accessible en voiture depuis ``origin``.
+
+    ``origin`` est fourni sous la forme ``(latitude, longitude)`` et ``minutes``
+    représente le temps de trajet maximal. La réponse du fournisseur est mise
+    en cache afin que les auto-refreshs de la marketplace ne consomment pas le
+    quota openrouteservice inutilement.
+    """
+    api_key = getattr(settings, 'OPENROUTESERVICE_API_KEY', '').strip()
+    if not api_key or not origin:
+        return {}
+
+    try:
+        origin_lat, origin_lng = float(origin[0]), float(origin[1])
+        minutes_value = int(minutes)
+    except (TypeError, ValueError, IndexError):
+        return {}
+
+    if not (-90 <= origin_lat <= 90 and -180 <= origin_lng <= 180):
+        return {}
+    if minutes_value <= 0 or minutes_value > 120:
+        return {}
+
+    payload_key = {
+        'o': [round(origin_lat, 5), round(origin_lng, 5)],
+        'm': minutes_value,
+        'p': profile,
+        'kind': 'isochrone',
+    }
+    digest = hashlib.sha256(json.dumps(payload_key, sort_keys=True).encode('utf-8')).hexdigest()[:32]
+    cache_key = f'ors:isochrone:{digest}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    base_url = getattr(
+        settings,
+        'OPENROUTESERVICE_BASE_URL',
+        'https://api.heigit.org/openrouteservice',
+    ).rstrip('/')
+    timeout = float(getattr(settings, 'OPENROUTESERVICE_TIMEOUT_SECONDS', 6))
+    cache_seconds = int(getattr(settings, 'OPENROUTESERVICE_CACHE_SECONDS', 900))
+    endpoint = f'{base_url}/v2/isochrones/{profile}'
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                'Authorization': api_key,
+                'Accept': 'application/geo+json, application/json',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'locations': [[origin_lng, origin_lat]],
+                'range': [minutes_value * 60],
+                'range_type': 'time',
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        body = response.json()
+        feature = (body.get('features') or [None])[0]
+        geometry = feature.get('geometry') if feature else None
+        if not geometry or geometry.get('type') not in {'Polygon', 'MultiPolygon'}:
+            return {}
+
+        result = {
+            'geometry': geometry,
+            'travel_time_minutes': minutes_value,
+            'profile': profile,
+        }
+    except (requests.RequestException, ValueError, TypeError, IndexError, KeyError) as exc:
+        logger.warning('openrouteservice isochrone indisponible: %s', exc)
+        return {}
+
+    cache.set(cache_key, result, cache_seconds)
+    return result

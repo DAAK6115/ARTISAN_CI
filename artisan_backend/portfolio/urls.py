@@ -6,6 +6,7 @@ from .views import (
     PortfolioMapView,
     RealisationDetailView,
     RouteToArtisanView,
+    TravelTimeIsochroneView,
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('realisation/<int:pk>/', RealisationDetailView.as_view(), name='edit-realisation'),
     path('map/', PortfolioMapView.as_view(), name='portfolio-map'),
     path('route-to-artisan/', RouteToArtisanView.as_view(), name='route-to-artisan'),
+    path('isochrone/', TravelTimeIsochroneView.as_view(), name='travel-time-isochrone'),
 ]

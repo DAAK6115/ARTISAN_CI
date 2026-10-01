@@ -315,6 +315,44 @@ class PortfolioDiscoveryTests(APITestCase):
         self.assertEqual(response.data['total'], 0)
 
 
+    @override_settings(
+        OPENROUTESERVICE_API_KEY='test-key',
+        OPENROUTESERVICE_BASE_URL='https://api.heigit.org/openrouteservice',
+        OPENROUTESERVICE_CACHE_SECONDS=1,
+        OPENROUTESERVICE_MATRIX_MAX_DESTINATIONS=100,
+    )
+    @patch('integrations.routing.requests.post')
+    def test_travel_time_filter_keeps_only_artisans_reachable_in_selected_time(self, mock_post):
+        cache.clear()
+        near = self._artisan('time-near', 'Cocody', Decimal('5.365000'), Decimal('-4.005000'))
+        far = self._artisan('time-far', 'Yopougon', Decimal('5.350000'), Decimal('-4.070000'))
+        self._service(near, 'Intervention rapide', 'btp')
+        self._service(far, 'Intervention éloignée', 'btp')
+
+        provider_response = Mock()
+        provider_response.raise_for_status.return_value = None
+        provider_response.json.return_value = {
+            'distances': [[2.4, 13.0]],
+            'durations': [[600, 2100]],
+        }
+        mock_post.return_value = provider_response
+
+        response = self.client.get(reverse('portfolio-map'), {
+            'scope': 'nearby',
+            'lat': '5.35995',
+            'lng': '-4.00826',
+            'travel_time_minutes': '15',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['search_mode'], 'time')
+        self.assertEqual(response.data['travel_time_minutes'], 15)
+        self.assertEqual(response.data['total'], 1)
+        self.assertEqual(response.data['results'][0]['artisan_nom'], 'time-near')
+        self.assertEqual(response.data['results'][0]['route_duration_minutes'], 10)
+
+
+
 class PortfolioLocationAndPhoneValidationTests(APITestCase):
     def setUp(self):
         self.artisan = CustomUser.objects.create_user(
@@ -373,6 +411,68 @@ class PortfolioLocationAndPhoneValidationTests(APITestCase):
         )
         self.assertFalse(serializer.is_valid())
         self.assertIn('whatsapp', serializer.errors)
+
+
+class TravelTimeIsochroneTests(APITestCase):
+    def setUp(self):
+        self.client_user = CustomUser.objects.create_user(
+            email='iso-client@example.com',
+            username='iso-client',
+            password='StrongPass123!',
+            role='client',
+        )
+
+    @override_settings(
+        OPENROUTESERVICE_API_KEY='test-key',
+        OPENROUTESERVICE_BASE_URL='https://api.heigit.org/openrouteservice',
+        OPENROUTESERVICE_CACHE_SECONDS=1,
+    )
+    @patch('integrations.routing.requests.post')
+    def test_client_receives_isochrone_polygon_for_selected_minutes(self, post_mock):
+        cache.clear()
+        response_mock = Mock()
+        response_mock.raise_for_status.return_value = None
+        response_mock.json.return_value = {
+            'features': [{
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'Polygon',
+                    'coordinates': [[
+                        [-4.02, 5.35],
+                        [-4.00, 5.34],
+                        [-3.98, 5.36],
+                        [-4.02, 5.35],
+                    ]],
+                },
+                'properties': {'value': 1800},
+            }],
+        }
+        post_mock.return_value = response_mock
+        self.client.force_authenticate(self.client_user)
+
+        response = self.client.post(reverse('travel-time-isochrone'), {
+            'lat': 5.35995,
+            'lng': -4.00826,
+            'minutes': 30,
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['travel_time_minutes'], 30)
+        self.assertEqual(response.data['geometry']['type'], 'Polygon')
+        self.assertNotIn('api_key', response.data)
+        self.assertTrue(post_mock.call_args.args[0].endswith('/v2/isochrones/driving-car'))
+        payload = post_mock.call_args.kwargs['json']
+        self.assertEqual(payload['range'], [1800])
+        self.assertEqual(payload['range_type'], 'time')
+
+    def test_isochrone_endpoint_is_reserved_for_authenticated_clients(self):
+        response = self.client.post(reverse('travel-time-isochrone'), {
+            'lat': 5.35995,
+            'lng': -4.00826,
+            'minutes': 30,
+        }, format='json')
+        self.assertIn(response.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
+
 
 
 class RouteToArtisanTests(APITestCase):
