@@ -15,12 +15,7 @@ PUBLIC_ROLE_CHOICES = (
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(
-        write_only=True,
-        min_length=10,
-        trim_whitespace=False,
-    )
-    # Le rôle admin ne peut jamais être créé depuis l'API publique d'inscription.
+    password = serializers.CharField(write_only=True, min_length=10, trim_whitespace=False)
     role = serializers.ChoiceField(choices=PUBLIC_ROLE_CHOICES)
 
     class Meta:
@@ -52,18 +47,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         country_code = attrs.get("country_code") or "CI"
         if "numero_momo" in attrs:
             try:
-                attrs["numero_momo"] = normalize_phone_number(
-                    attrs.get("numero_momo"),
-                    country_code=country_code,
-                )
+                attrs["numero_momo"] = normalize_phone_number(attrs.get("numero_momo"), country_code=country_code)
             except InvalidPhoneNumber as exc:
                 raise serializers.ValidationError({"numero_momo": str(exc)}) from exc
-
-        candidate = CustomUser(
-            email=attrs.get("email"),
-            username=attrs.get("username"),
-            role=attrs.get("role", "client"),
-        )
+        candidate = CustomUser(email=attrs.get("email"), username=attrs.get("username"), role=attrs.get("role", "client"))
         try:
             validate_password(attrs["password"], user=candidate)
         except DjangoValidationError as exc:
@@ -96,6 +83,8 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         fields = [
             "username", "first_name", "last_name", "email",
             "phone_number", "numero_momo", "city", "profile_photo", "qr_wave",
+            "primary_address", "primary_latitude", "primary_longitude",
+            "preferred_contact_method", "preferred_service_location",
             "country_code", "country_calling_code", "currency_code",
         ]
         read_only_fields = ["country_calling_code", "currency_code"]
@@ -132,13 +121,15 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
             if field_name not in attrs:
                 continue
             try:
-                attrs[field_name] = normalize_phone_number(
-                    attrs.get(field_name),
-                    country_code=country_code,
-                )
+                attrs[field_name] = normalize_phone_number(attrs.get(field_name), country_code=country_code)
             except InvalidPhoneNumber as exc:
                 label = "Téléphone" if field_name == "phone_number" else "Numéro Mobile Money"
                 raise serializers.ValidationError({field_name: f"{label} : {exc}"}) from exc
+
+        lat = attrs.get("primary_latitude", serializers.empty)
+        lng = attrs.get("primary_longitude", serializers.empty)
+        if (lat is serializers.empty) != (lng is serializers.empty):
+            raise serializers.ValidationError({"primary_address": "Sélectionnez une adresse proposée pour enregistrer sa position GPS."})
         return attrs
 
     def update(self, instance, validated_data):
@@ -147,6 +138,15 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
             validated_data["country_code"] = country["code"]
             validated_data["country_calling_code"] = country["dial_code"]
             validated_data["currency_code"] = country.get("currency") or instance.currency_code
+
+        if "primary_address" in validated_data:
+            new_address = (validated_data.get("primary_address") or "").strip()
+            validated_data["primary_address"] = new_address
+            has_new_coordinates = "primary_latitude" in validated_data and "primary_longitude" in validated_data
+            if not new_address or (new_address != (instance.primary_address or "") and not has_new_coordinates):
+                validated_data["primary_latitude"] = None
+                validated_data["primary_longitude"] = None
+
         return super().update(instance, validated_data)
 
     def validate_qr_wave(self, value):
@@ -171,6 +171,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "phone_number", "phone_number_national",
             "numero_momo", "numero_momo_national",
             "city", "profile_photo", "qr_wave",
+            "primary_address", "primary_latitude", "primary_longitude",
+            "preferred_contact_method", "preferred_service_location",
             "is_active",
             "verification_status", "verification_requested_at",
             "verification_reviewed_at", "verification_note",
@@ -189,4 +191,3 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_phone_number_national(self, obj):
         return format_phone_national(obj.phone_number, country_code=obj.country_code)
-

@@ -40,6 +40,17 @@ class CustomUser(AbstractUser):
         ("artisan", "Artisan"),
         ("admin", "Admin"),
     )
+    PREFERRED_CONTACT_CHOICES = (
+        ("chat", "Messagerie ARTISAN_CI"),
+        ("whatsapp", "WhatsApp"),
+        ("phone", "Téléphone"),
+        ("email", "Email"),
+    )
+    PREFERRED_SERVICE_LOCATION_CHOICES = (
+        ("no_preference", "Aucune préférence"),
+        ("home", "Chez moi"),
+        ("workshop", "Chez l'artisan"),
+    )
 
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
@@ -56,6 +67,19 @@ class CustomUser(AbstractUser):
     numero_momo = models.CharField(max_length=20, blank=True, null=True)
     city = models.CharField(max_length=120, blank=True)
     profile_photo = models.ImageField(upload_to="client_profiles/", blank=True, null=True)
+    primary_address = models.CharField(max_length=255, blank=True)
+    primary_latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    primary_longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    preferred_contact_method = models.CharField(
+        max_length=16,
+        choices=PREFERRED_CONTACT_CHOICES,
+        default="chat",
+    )
+    preferred_service_location = models.CharField(
+        max_length=20,
+        choices=PREFERRED_SERVICE_LOCATION_CHOICES,
+        default="no_preference",
+    )
     qr_wave = models.ImageField(upload_to="qr_codes/", blank=True, null=True)
     country_code = models.CharField(max_length=2, default="CI", db_index=True)
     country_calling_code = models.CharField(max_length=12, default="+225")
