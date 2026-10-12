@@ -17,6 +17,7 @@ const primary = [
 const secondary = [
   ['/client/artisans', 'user', 'Artisans'],
   ['/client/favoris', 'heart', 'Favoris'],
+  ['/client/adresses', 'pin', 'Mes adresses'],
   ['/client/devis', 'file', 'Devis'],
   ['/client/paiements', 'receipt', 'Paiements'],
   ['/client/avis', 'star', 'Mes avis'],

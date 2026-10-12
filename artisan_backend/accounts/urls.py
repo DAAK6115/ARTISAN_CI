@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .address_views import ClientAddressDetailView, ClientAddressListCreateView
 from .views import (
     ClientProfileView,
     CountryReferenceView,
@@ -20,6 +21,8 @@ from .views import (
 
 urlpatterns = [
     path("reference/countries/", CountryReferenceView.as_view(), name="reference-countries"),
+    path("client/addresses/", ClientAddressListCreateView.as_view(), name="client-address-list"),
+    path("client/addresses/<int:pk>/", ClientAddressDetailView.as_view(), name="client-address-detail"),
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", LoginView.as_view(), name="login"),
     path("logout/", LogoutView.as_view(), name="logout"),

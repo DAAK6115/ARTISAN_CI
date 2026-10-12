@@ -13,7 +13,7 @@ export default function Register() {
     passwordConfirm: '',
     role: 'client',
     country_code: 'CI',
-    numero_momo: '',
+    phone_number: '',
   });
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState(false);
@@ -44,11 +44,11 @@ export default function Register() {
         password: form.password,
         role: form.role,
         country_code: form.country_code,
-        numero_momo: form.numero_momo.trim(),
+        phone_number: form.phone_number.trim(),
       });
       setSuccess(true);
       setMessage('Compte créé avec succès. Vous pouvez maintenant vous connecter.');
-      setForm({ username: '', email: '', password: '', passwordConfirm: '', role: 'client', country_code: 'CI', numero_momo: '' });
+      setForm({ username: '', email: '', password: '', passwordConfirm: '', role: 'client', country_code: 'CI', phone_number: '' });
     } catch (err) {
       const data = err.response?.data;
       if (data?.email) setMessage('Cette adresse email est déjà utilisée ou invalide.');
@@ -56,7 +56,7 @@ export default function Register() {
       else if (data?.password) setMessage('Le mot de passe ne respecte pas les règles de sécurité.');
       else if (data?.role) setMessage('Le type de compte sélectionné est invalide.');
       else if (data?.country_code) setMessage('Le pays sélectionné est invalide ou temporairement indisponible.');
-      else if (data?.numero_momo) setMessage(Array.isArray(data.numero_momo) ? data.numero_momo[0] : String(data.numero_momo));
+      else if (data?.phone_number) setMessage(Array.isArray(data.phone_number) ? data.phone_number[0] : String(data.phone_number));
       else setMessage("Impossible de créer le compte pour le moment.");
     } finally {
       setLoading(false);
@@ -91,14 +91,14 @@ export default function Register() {
           <input type="password" name="password" autoComplete="new-password" minLength={10} placeholder="Mot de passe" value={form.password} onChange={handleChange} required className="w-full p-2 border rounded" />
           <input type="password" name="passwordConfirm" autoComplete="new-password" minLength={10} placeholder="Confirmer le mot de passe" value={form.passwordConfirm} onChange={handleChange} required className="w-full p-2 border rounded" />
 
-          <CountrySelect value={form.country_code} onChange={(country_code) => setForm((current) => ({ ...current, country_code, numero_momo: '' }))} />
+          <CountrySelect value={form.country_code} onChange={(country_code) => setForm((current) => ({ ...current, country_code, phone_number: '' }))} />
 
           <InternationalPhoneInput
             countryCode={form.country_code}
-            value={form.numero_momo}
-            onChange={(numero_momo) => setForm((current) => ({ ...current, numero_momo }))}
-            label={form.role === 'client' ? 'Téléphone / Mobile Money (facultatif)' : 'Téléphone du compte (facultatif)'}
-            placeholder="Ex. 01 40 93 75 04"
+            value={form.phone_number}
+            onChange={(phone_number) => setForm((current) => ({ ...current, phone_number }))}
+            label="Téléphone principal (facultatif)"
+            placeholder="Numéro local"
           />
 
           <select name="role" value={form.role} onChange={handleChange} className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3">

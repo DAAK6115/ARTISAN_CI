@@ -136,8 +136,8 @@ export default function ClientProfilePage() {
                 <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Email</p><p className="mt-1 break-all text-sm font-black">{profile.email}</p></div>
                 <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Pays</p><p className="mt-1 text-sm font-black">{countryFlag(profile.country_code)} {countryDisplayName(profile.country_code)}</p><p className="mt-1 text-xs text-[#718078]">{profile.country_calling_code} · {profile.currency_code}</p></div>
                 <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Ville / commune</p><p className="mt-1 text-sm font-black">{profile.city || 'Non renseignée'}</p></div>
-                <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Téléphone</p><p className="mt-1 text-sm font-black">{profile.phone_number || 'Non renseigné'}</p></div>
-                <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Mobile Money</p><p className="mt-1 text-sm font-black">{profile.numero_momo || 'Non renseigné'}</p></div>
+                <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Téléphone</p><p className="mt-1 text-sm font-black">{profile.phone_number_national || profile.phone_number || 'Non renseigné'}</p></div>
+                <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Mobile Money</p><p className="mt-1 text-sm font-black">{profile.numero_momo_national || profile.numero_momo || 'Non renseigné'}</p></div>
                 <div className="rounded-2xl bg-[#F7F9F7] p-4"><p className="text-xs font-bold text-[#829087]">Adresse principale</p><p className="mt-1 line-clamp-2 text-sm font-black">{profile.primary_address || 'Non renseignée'}</p></div>
               </div>
             </div>
@@ -167,6 +167,7 @@ export default function ClientProfilePage() {
               <h3 className="mt-2 text-xl font-black">Votre espace client</h3>
               <div className="mt-5 grid gap-2">
                 <Link to="/client/artisans" className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 text-sm font-black"><span>Trouver un artisan</span><AppIcon name="arrow" className="h-4 w-4" /></Link>
+                <Link to="/client/adresses" className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 text-sm font-black"><span>Mes adresses</span><AppIcon name="arrow" className="h-4 w-4" /></Link>
                 <Link to="/client/paiements" className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 text-sm font-black"><span>Mes paiements</span><AppIcon name="arrow" className="h-4 w-4" /></Link>
                 <Link to="/client/support" className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 text-sm font-black"><span>Support</span><AppIcon name="arrow" className="h-4 w-4" /></Link>
               </div>

@@ -20,7 +20,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ["id", "email", "username", "password", "role", "country_code", "numero_momo"]
+        fields = ["id", "email", "username", "password", "role", "country_code", "phone_number", "numero_momo"]
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -45,11 +45,17 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         country_code = attrs.get("country_code") or "CI"
-        if "numero_momo" in attrs:
+        for field_name in ("phone_number", "numero_momo"):
+            if field_name not in attrs:
+                continue
             try:
-                attrs["numero_momo"] = normalize_phone_number(attrs.get("numero_momo"), country_code=country_code)
+                attrs[field_name] = normalize_phone_number(
+                    attrs.get(field_name),
+                    country_code=country_code,
+                )
             except InvalidPhoneNumber as exc:
-                raise serializers.ValidationError({"numero_momo": str(exc)}) from exc
+                label = "Téléphone" if field_name == "phone_number" else "Numéro Mobile Money"
+                raise serializers.ValidationError({field_name: f"{label} : {exc}"}) from exc
         candidate = CustomUser(email=attrs.get("email"), username=attrs.get("username"), role=attrs.get("role", "client"))
         try:
             validate_password(attrs["password"], user=candidate)

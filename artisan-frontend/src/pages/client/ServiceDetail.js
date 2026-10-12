@@ -4,6 +4,7 @@ import axios from '../../utils/axiosInstance';
 import AppIcon from '../../components/AppIcon';
 import PublicHeader from '../../components/PublicHeader';
 import AddressAutocomplete from '../../components/AddressAutocomplete';
+import SavedAddressPicker from '../../components/SavedAddressPicker';
 import { reverseGeocode } from '../../utils/location';
 import { getUserRole, isAuthenticated } from '../../utils/auth';
 import { formatServiceMoney, serviceOriginalMoney, servicePriceWasConverted } from '../../utils/currency';
@@ -307,6 +308,14 @@ export default function ServiceDetail({ publicMode = false }) {
 
                 {interventionPlace === 'chez_client' ? (
                   <div className="mt-3">
+                    <SavedAddressPicker
+                      onSelect={({ address, latitude, longitude }) => {
+                        setInterventionAddress(address);
+                        setInterventionLatitude(Number(latitude.toFixed(6)));
+                        setInterventionLongitude(Number(longitude.toFixed(6)));
+                        setMessage('Adresse enregistrée sélectionnée pour cette intervention.');
+                      }}
+                    />
                     <AddressAutocomplete
                       value={interventionAddress}
                       onChange={(value) => {

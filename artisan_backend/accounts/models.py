@@ -110,6 +110,42 @@ class CustomUser(AbstractUser):
         return self.email
 
 
+class ClientAddress(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="client_addresses",
+    )
+    label = models.CharField(max_length=40)
+    address = models.CharField(max_length=255)
+    city = models.CharField(max_length=120, blank=True)
+    country_code = models.CharField(max_length=2, default="CI", db_index=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    is_default = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "label", "id"]
+        indexes = [
+            models.Index(
+                fields=["user", "-is_default"],
+                name="client_addr_user_def_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_default=True),
+                name="one_default_client_addr",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.label}"
+
+
 class PasswordResetCode(models.Model):
     MAX_ATTEMPTS = 5
     LIFETIME_MINUTES = 5

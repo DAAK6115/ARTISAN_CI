@@ -38,6 +38,7 @@ import ClientNotificationsPage from './pages/client/ClientNotificationsPage';
 import DonnerAvisPage from './pages/client/DonnerAvisPage';
 import ClientProfilePage from './pages/client/ClientProfilePage';
 import ClientProfileEditPage from './pages/client/ClientProfileEditPage';
+import ClientAddressesPage from './pages/client/ClientAddressesPage';
 import NoterArtisanPage from './pages/client/NoterArtisanPage';
 import SupportPage from './pages/shared/SupportPage';
 
@@ -146,6 +147,7 @@ export default function App() {
         <Route path="/client/avis/ajouter/:rdv_id" element={<ClientRoute><NoterArtisanPage /></ClientRoute>} />
         <Route path="/client/profil" element={<ClientRoute><ClientProfilePage /></ClientRoute>} />
         <Route path="/client/profil/edit" element={<ClientRoute><ClientProfileEditPage /></ClientRoute>} />
+        <Route path="/client/adresses" element={<ClientRoute><ClientAddressesPage /></ClientRoute>} />
         <Route path="/client/mes-conversations" element={<ClientRoute><ListeConversationsPage /></ClientRoute>} />
         <Route path="/client/messagerie/:username" element={<ClientRoute><ChatPage /></ClientRoute>} />
 
