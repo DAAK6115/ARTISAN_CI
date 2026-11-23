@@ -332,9 +332,10 @@ class PortfolioDiscoveryTests(APITestCase):
         provider_response = Mock()
         provider_response.raise_for_status.return_value = None
         provider_response.json.return_value = {
-            'distances': [[2.4, 13.0]],
-            'durations': [[600, 2100]],
-        }
+            # Ordre du queryset : time-far, puis time-near.
+            'distances': [[13.0, 2.4]],
+            'durations': [[2100, 600]],
+            }
         mock_post.return_value = provider_response
 
         response = self.client.get(reverse('portfolio-map'), {

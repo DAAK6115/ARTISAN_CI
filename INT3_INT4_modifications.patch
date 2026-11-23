@@ -1,0 +1,110 @@
+diff --git a/artisan_backend/accounts/models.py b/artisan_backend/accounts/models.py
+--- a/artisan_backend/accounts/models.py
++++ b/artisan_backend/accounts/models.py
+@@ -76,6 +76,7 @@ class CustomUser(AbstractUser):
+     country_code = models.CharField(max_length=2, default="CI", db_index=True)
+     country_calling_code = models.CharField(max_length=12, default="+225")
+     currency_code = models.CharField(max_length=3, default="XOF")
++    timezone_name = models.CharField(max_length=64, default='Africa/Abidjan')
+     verification_status = models.CharField(
+         max_length=16,
+         choices=ARTISAN_VERIFICATION_CHOICES,
+diff --git a/artisan_backend/accounts/serializers.py b/artisan_backend/accounts/serializers.py
+--- a/artisan_backend/accounts/serializers.py
++++ b/artisan_backend/accounts/serializers.py
+@@ -5,6 +5,7 @@ from rest_framework import serializers
+ from common.validators import validate_image_upload
+ from integrations.countries import get_country
+ from integrations.phones import InvalidPhoneNumber, format_phone_national, normalize_phone_number
++from integrations.timezones import validate_iana_timezone
+ from .models import CustomUser
+@@ -66,6 +67,7 @@ class UserSerializer(serializers.ModelSerializer):
+             "verification_status", "verification_requested_at",
+             "verification_reviewed_at", "verification_note",
+-            "country_code", "country_calling_code", "currency_code",
++            "country_code", "country_calling_code", "currency_code", "timezone_name",
+         ]
+@@ -81,9 +83,12 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
+             "primary_address", "primary_latitude", "primary_longitude",
+             "preferred_contact_method", "preferred_service_location",
+-            "country_code", "country_calling_code", "currency_code",
++            "country_code", "country_calling_code", "currency_code", "timezone_name",
+         ]
+         read_only_fields = ["country_calling_code", "currency_code"]
+ 
++    def validate_timezone_name(self, value):
++        return validate_iana_timezone(value)
++
+     def validate_username(self, value):
+@@ -162,7 +167,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
+             "verification_status", "verification_requested_at",
+             "verification_reviewed_at", "verification_note",
+-            "country_code", "country_calling_code", "currency_code",
++            "country_code", "country_calling_code", "currency_code", "timezone_name",
+         ]
+diff --git a/artisan_backend/payments/serializers.py b/artisan_backend/payments/serializers.py
+--- a/artisan_backend/payments/serializers.py
++++ b/artisan_backend/payments/serializers.py
+@@ -2,6 +2,7 @@ from decimal import Decimal
+ 
+ from django.db import transaction
++from integrations.money_display import money_display
+ from rest_framework import serializers
+@@ -32,6 +33,9 @@ class QuoteSerializer(serializers.ModelSerializer):
+     currency = serializers.CharField(source='appointment.service.artisan.currency_code', read_only=True)
+     is_expired = serializers.BooleanField(read_only=True)
++    display_amount = serializers.SerializerMethodField()
++    display_currency = serializers.SerializerMethodField()
++    display_conversion_applied = serializers.SerializerMethodField()
+ 
+@@ -41,7 +45,8 @@ class QuoteSerializer(serializers.ModelSerializer):
+             'id', 'reference', 'appointment', 'artisan', 'artisan_username', 'client',
+             'client_username', 'service_titre', 'appointment_status', 'status', 'notes',
+-            'valid_until', 'subtotal', 'discount_amount', 'total', 'currency', 'sent_at',
++            'valid_until', 'subtotal', 'discount_amount', 'total', 'currency',
++            'display_amount', 'display_currency', 'display_conversion_applied', 'sent_at',
+             'accepted_at', 'rejected_at', 'created_at', 'updated_at', 'is_expired',
+@@ -52,6 +57,18 @@ class QuoteSerializer(serializers.ModelSerializer):
+             'accepted_at', 'rejected_at', 'created_at', 'updated_at',
+         ]
+ 
++    def _display(self, obj):
++        return money_display(obj.total, obj.appointment.service.artisan.currency_code, self.context.get('request'))
++
++    def get_display_amount(self, obj):
++        return self._display(obj)['amount']
++
++    def get_display_currency(self, obj):
++        return self._display(obj)['currency']
++
++    def get_display_conversion_applied(self, obj):
++        return self._display(obj)['converted']
++
+     def validate_discount_amount(self, value):
+@@ -112,10 +129,28 @@ class PaymentSerializer(serializers.ModelSerializer):
+     quote_reference = serializers.CharField(source='quote.reference', read_only=True, allow_null=True)
+     appointment_status = serializers.CharField(source='appointment.statut', read_only=True, allow_null=True)
+-    currency = serializers.CharField(source='appointment.service.artisan.currency_code', read_only=True)
++    display_amount = serializers.SerializerMethodField()
++    display_currency = serializers.SerializerMethodField()
++    display_conversion_applied = serializers.SerializerMethodField()
+     methode_paiement_label = serializers.CharField(
+@@ -130,6 +165,18 @@ class PaymentSerializer(serializers.ModelSerializer):
+         allow_null=True,
+     )
+ 
++    def _display(self, obj):
++        return money_display(obj.montant, obj.currency, self.context.get('request'))
++
++    def get_display_amount(self, obj):
++        return self._display(obj)['amount']
++
++    def get_display_currency(self, obj):
++        return self._display(obj)['currency']
++
++    def get_display_conversion_applied(self, obj):
++        return self._display(obj)['converted']
++
+     class Meta:
+         model = Payment
+         fields = '__all__'
